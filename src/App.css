@@ -147,8 +147,14 @@ body {
   border-radius: 28px;
   padding: 1.5rem;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03), 0 2px 5px rgba(0, 0, 0, 0.02);
+}
+
+.sidebar-sticky {
   position: sticky;
-  top: 2.5rem;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .calendar-header {

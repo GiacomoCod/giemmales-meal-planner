@@ -355,47 +355,49 @@ function App() {
         {activeTab === 'planner' && (
           <>
             <aside className="sidebar">
-        <div className="calendar-card">
-          <div className="calendar-header">
-            <button className="calendar-nav-btn" onClick={prevMonth}><ChevronLeft size={20} /></button>
-            <span>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>
-            <button className="calendar-nav-btn" onClick={nextMonth}><ChevronRight size={20} /></button>
-          </div>
-          <div className="calendar-grid">
-            {['L', 'M', 'M', 'G', 'V', 'S', 'D'].map((d, i) => (
-              <div key={i} className="calendar-day-header">{d}</div>
-            ))}
-            {calendarDays.map(day => {
-              const isSelectedWeek = day >= selectedWeekStart && day <= selectedWeekEnd;
-              const isCurrentMonth = isSameMonth(day, monthStart);
-              return (
-                <div 
-                  key={day.toString()} 
-                  className={`calendar-cell ${!isCurrentMonth ? 'muted' : ''} ${isSelectedWeek ? 'selected-week' : ''}`}
-                  onClick={() => {
-                    setSelectedWeekStart(startOfWeek(day, { weekStartsOn: 1 }));
-                    setCurrentMonth(startOfMonth(day));
-                  }}
-                >
-                  <div className="calendar-cell-inner">{format(day, 'd')}</div>
+              <div className="sidebar-sticky">
+                <div className="calendar-card">
+                  <div className="calendar-header">
+                    <button className="calendar-nav-btn" onClick={prevMonth}><ChevronLeft size={20} /></button>
+                    <span>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>
+                    <button className="calendar-nav-btn" onClick={nextMonth}><ChevronRight size={20} /></button>
+                  </div>
+                  <div className="calendar-grid">
+                    {['L', 'M', 'M', 'G', 'V', 'S', 'D'].map((d, i) => (
+                      <div key={i} className="calendar-day-header">{d}</div>
+                    ))}
+                    {calendarDays.map(day => {
+                      const isSelectedWeek = day >= selectedWeekStart && day <= selectedWeekEnd;
+                      const isCurrentMonth = isSameMonth(day, monthStart);
+                      return (
+                        <div 
+                          key={day.toString()} 
+                          className={`calendar-cell ${!isCurrentMonth ? 'muted' : ''} ${isSelectedWeek ? 'selected-week' : ''}`}
+                          onClick={() => {
+                            setSelectedWeekStart(startOfWeek(day, { weekStartsOn: 1 }));
+                            setCurrentMonth(startOfMonth(day));
+                          }}
+                        >
+                          <div className="calendar-cell-inner">{format(day, 'd')}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
 
-        <div className="notes-card">
-          <div className="notes-header">
-            <h3 className="notes-title">Note della Settimana 📝</h3>
-          </div>
-          <textarea
-            className="notes-textarea"
-            placeholder="Aggiungi note per questa settimana..."
-            value={weekNotes}
-            onChange={(e) => handleUpdateNotes(e.target.value)}
-          />
-        </div>
-      </aside>
+                <div className="notes-card">
+                  <div className="notes-header">
+                    <h3 className="notes-title">Note della Settimana 📝</h3>
+                  </div>
+                  <textarea
+                    className="notes-textarea"
+                    placeholder="Aggiungi note per questa settimana..."
+                    value={weekNotes}
+                    onChange={(e) => handleUpdateNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+            </aside>
 
       <main className="main-content">
         <div className="grid-container">
