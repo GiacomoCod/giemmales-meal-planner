@@ -132,6 +132,7 @@ function App() {
 
   const [mealPlan, setMealPlan] = useState<MealPlan>({});
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
+  const [weekNotes, setWeekNotes] = useState<string>('');
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -195,6 +196,36 @@ function App() {
       unsubscribeShopping();
     };
   }, []);
+
+  // Sync notes for the selected week
+  useEffect(() => {
+    const weekKey = format(selectedWeekStart, 'yyyy-MM-dd');
+    const unsubscribeNotes = onSnapshot(
+      doc(db, 'weekNotes', weekKey),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setWeekNotes(docSnap.data().content || '');
+        } else {
+          setWeekNotes('');
+        }
+      },
+      (error) => {
+        console.error("[FIREBASE NOTES ERROR]:", error);
+      }
+    );
+
+    return () => unsubscribeNotes();
+  }, [selectedWeekStart]);
+
+  const handleUpdateNotes = async (content: string) => {
+    setWeekNotes(content);
+    const weekKey = format(selectedWeekStart, 'yyyy-MM-dd');
+    try {
+      await setDoc(doc(db, 'weekNotes', weekKey), { content }, { merge: true });
+    } catch (error: any) {
+      console.error("[FIREBASE NOTES SAVE ERROR]:", error);
+    }
+  };
 
   const generateId = () => Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 
@@ -351,6 +382,18 @@ function App() {
               );
             })}
           </div>
+        </div>
+
+        <div className="notes-card">
+          <div className="notes-header">
+            <h3 className="notes-title">Note della Settimana 📝</h3>
+          </div>
+          <textarea
+            className="notes-textarea"
+            placeholder="Aggiungi note per questa settimana..."
+            value={weekNotes}
+            onChange={(e) => handleUpdateNotes(e.target.value)}
+          />
         </div>
       </aside>
 
