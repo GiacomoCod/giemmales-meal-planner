@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { Croissant, Soup, Utensils, ShoppingCart, Check, Trash2, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Bell } from 'lucide-react';
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths, isSameMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { parseISO } from 'date-fns';
 import { db, app } from './firebase';
 import './App.css';
 
 const SUGGESTIONS = [
   { text: 'Biscotti', icon: '🍪' },
+  { text: 'Birra', icon: '🍺' },
   { text: 'Broccoli', icon: '🥦' },
   { text: 'Burro', icon: '🧈' },
   { text: 'Caffè', icon: '☕' },
@@ -29,6 +30,8 @@ const SUGGESTIONS = [
   { text: 'Riso', icon: '🍚' },
   { text: 'Sale', icon: '🧂' },
   { text: 'Uova', icon: '🥚' },
+  { text: 'Vino', icon: '🍷' },
+  { text: 'Yogurt', icon: '🥛' },
   { text: 'Zucchero', icon: '🍯' }
 ];
 
@@ -61,15 +64,18 @@ type MealPlan = {
 };
 
 function MealSlot({
-  meal, entries, onAdd, onRemove, onUpdateAssignee
+  meal, entries, onAdd, onRemove, onUpdateAssignee, onUpdateText
 }: {
   meal: { id: string; label: string; Icon: any };
   entries: MealEntry[];
   onAdd: (text: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => void;
   onRemove: (id: string) => void;
   onUpdateAssignee: (id: string, newAssignee: 'Ale' | 'Giem' | 'Giemmale') => void;
+  onUpdateText: (id: string, newText: string) => void;
 }) {
   const [text, setText] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
   const Icon = meal.Icon;
 
   const handleAdd = (e: React.FormEvent) => {
@@ -84,6 +90,18 @@ function MealSlot({
     if (current === 'Giemmale') return 'Ale';
     if (current === 'Ale') return 'Giem';
     return 'Giemmale';
+  };
+
+  const startEditing = (entry: MealEntry) => {
+    setEditingId(entry.id);
+    setEditingValue(entry.text);
+  };
+
+  const saveEdit = (id: string) => {
+    if (editingValue.trim() && editingValue.trim() !== entries.find(e => e.id === id)?.text) {
+      onUpdateText(id, editingValue.trim());
+    }
+    setEditingId(null);
   };
 
   return (
@@ -104,7 +122,36 @@ function MealSlot({
             >
               {entry.assignee}
             </button>
-            <span className="meal-entry-text">{entry.text}</span>
+            
+            {editingId === entry.id ? (
+              <input 
+                className="edit-entry-input"
+                autoFocus
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                onBlur={() => {
+                  onUpdateText(entry.id, editText);
+                  setEditingId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    onUpdateText(entry.id, editText);
+                    setEditingId(null);
+                  }
+                }}
+              />
+            ) : (
+              <span 
+                className="meal-entry-text" 
+                onClick={() => {
+                  setEditingId(entry.id);
+                  setEditText(entry.text);
+                }}
+              >
+                {entry.text}
+              </span>
+            )}
+
             <button className="del-entry-btn" type="button" onClick={() => onRemove(entry.id)}>
               <Trash2 size={13} />
             </button>
@@ -218,6 +265,14 @@ function App() {
         console.error("[FIREBASE NOTIFICATIONS ERROR]:", error);
       }
     );
+
+    // One-time cleanup of stale test items
+    const checkStaleItems = async () => {
+      const q = query(collection(db, 'shoppingList'), where("text", "==", "Test from backend Server"));
+      const snap = await getDocs(q);
+      snap.forEach(async (d) => { await deleteDoc(d.ref); });
+    };
+    checkStaleItems();
 
     return () => {
       unsubscribeMeals();
@@ -349,12 +404,41 @@ function App() {
 
   const handleUpdateAssignee = async (dateKey: string, mealId: string, entryId: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => {
     const dayData = mealPlan[dateKey] || {};
-    const mealData = dayData[mealId] || [];
+    const mealData = (dayData[mealId] || []) as MealEntry[];
 
     await setDoc(doc(db, 'mealPlans', dateKey), {
       ...dayData,
       [mealId]: mealData.map(e => e.id === entryId ? { ...e, assignee } : e)
     }, { merge: true });
+  };
+
+  const handleUpdateMealEntryText = async (dateKey: string, mealId: string, entryId: string, newText: string) => {
+    const dayData = mealPlan[dateKey] || {};
+    const mealData = (dayData[mealId] || []) as MealEntry[];
+    const entryToUpdate = mealData.find(e => e.id === entryId);
+
+    if (!entryToUpdate || entryToUpdate.text === newText) return;
+
+    const oldText = entryToUpdate.text;
+
+    try {
+      await setDoc(doc(db, 'mealPlans', dateKey), {
+        ...dayData,
+        [mealId]: mealData.map(e => e.id === entryId ? { ...e, text: newText } : e)
+      }, { merge: true });
+
+      // Create Notification
+      const dayName = format(parseISO(dateKey), 'EEEE d', { locale: it });
+      const noteText = `Pasto "${oldText}" modificato in "${newText}" su ${dayName}`;
+      const notifId = generateId();
+      await setDoc(doc(db, 'notifications', notifId), {
+        text: noteText,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e: any) {
+      console.error("[FIREBASE UPDATE TEXT ERROR]:", e);
+    }
   };
 
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
@@ -508,11 +592,12 @@ function App() {
                       <MealSlot
                         key={meal.id}
                         meal={meal}
-                        entries={mealPlan[dateKey]?.[meal.id] || []}
-                        onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
-                        onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
-                        onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
-                      />
+                        entries={mealPlan[dateKey]?.[meal.id] || []} 
+                      onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
+                      onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
+                      onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
+                      onUpdateText={(id, newText) => handleUpdateMealEntryText(dateKey, meal.id, id, newText)}
+                    />
                     ))}
                   </div>
                 </div>
