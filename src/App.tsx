@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Croissant, Soup, Utensils, ShoppingCart, Check, Trash2, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+import { Croissant, Soup, Utensils, ShoppingCart, Check, Trash2, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Bell } from 'lucide-react';
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths, isSameMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { parseISO } from 'date-fns';
 import { db, app } from './firebase';
 import './App.css';
 
@@ -38,8 +39,13 @@ const MEALS = [
 ];
 
 const PASTEL_VARS = [
-  'var(--col-lunedi)', 'var(--col-martedi)', 'var(--col-mercoledi)',
-  'var(--col-giovedi)', 'var(--col-venerdi)', 'var(--col-sabato)', 'var(--col-domenica)'
+  '#FFF5F5', // Monday - Subtle red/pink
+  '#FFF9F0', // Tuesday - Subtle orange
+  '#FFFDF0', // Wednesday - Subtle yellow
+  '#F0FFF4', // Thursday - Subtle green
+  '#F0FFFF', // Friday - Subtle blue/cyan
+  '#F5F5FF', // Saturday - Subtle indigo/blue
+  '#FAF5FF'  // Sunday - Subtle purple
 ];
 
 export type MealEntry = {
@@ -126,6 +132,13 @@ type ShoppingItem = {
   checked: boolean;
 };
 
+interface Notification {
+  id: string;
+  text: string;
+  timestamp: number;
+  read: boolean;
+}
+
 function App() {
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -133,6 +146,8 @@ function App() {
   const [mealPlan, setMealPlan] = useState<MealPlan>({});
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
   const [weekNotes, setWeekNotes] = useState<string>('');
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -190,9 +205,24 @@ function App() {
       }
     );
 
+    const unsubscribeNotifications = onSnapshot(
+      collection(db, 'notifications'),
+      (snapshot) => {
+        const list = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() } as Notification))
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 10); // Keep only last 10
+        setNotifications(list);
+      },
+      (error) => {
+        console.error("[FIREBASE NOTIFICATIONS ERROR]:", error);
+      }
+    );
+
     return () => {
       unsubscribeMeals();
       unsubscribeShopping();
+      unsubscribeNotifications();
     };
   }, []);
 
@@ -274,6 +304,17 @@ function App() {
         ...dayData,
         [mealId]: [...(dayData[mealId] || []), newEntry]
       }, { merge: true });
+
+      // Create Notification
+      const dayName = format(parseISO(dateKey), 'EEEE d', { locale: it });
+      const noteText = `Pasto "${text}" aggiunto a ${dayName} (${assignee})`;
+      const notifId = generateId();
+      await setDoc(doc(db, 'notifications', notifId), {
+        text: noteText,
+        timestamp: Date.now(),
+        read: false
+      });
+
     } catch (e: any) {
       console.error("[FIREBASE MEALS SET ERROR]:", e);
     }
@@ -345,7 +386,42 @@ function App() {
             </button>
           </div>
 
-          <div className="nav-spacer"></div>
+          <div className="nav-spacer">
+            <div className="notif-wrapper">
+              <button 
+                className={`notif-btn ${notifications.some(n => !n.read) ? 'has-unread' : ''}`}
+                onClick={() => setShowNotifications(!showNotifications)}
+              >
+                <Bell size={22} strokeWidth={2.5} />
+                {notifications.some(n => !n.read) && <span className="notif-badge" />}
+              </button>
+
+              {showNotifications && (
+                <div className="notif-dropdown">
+                  <div className="notif-header">
+                    <h4>Notifiche</h4>
+                    <button onClick={async () => {
+                      for (const n of notifications) {
+                        if (!n.read) await setDoc(doc(db, 'notifications', n.id), { ...n, read: true });
+                      }
+                    }}>Segna come lette</button>
+                  </div>
+                  <div className="notif-list">
+                    {notifications.length === 0 ? (
+                      <p className="notif-empty">Nessuna nuova notifica</p>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} className={`notif-item ${!n.read ? 'unread' : ''}`}>
+                          <p className="notif-text">{n.text}</p>
+                          <span className="notif-time">{format(n.timestamp, 'HH:mm')}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </nav>
 
