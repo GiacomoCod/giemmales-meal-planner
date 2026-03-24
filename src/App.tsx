@@ -322,12 +322,29 @@ function App() {
 
   const handleRemoveMealEntry = async (dateKey: string, mealId: string, entryId: string) => {
     const dayData = mealPlan[dateKey] || {};
-    const mealData = dayData[mealId] || [];
+    const mealData = (dayData[mealId] || []) as MealEntry[];
+    const entryToRemove = mealData.find(e => e.id === entryId);
 
-    await setDoc(doc(db, 'mealPlans', dateKey), {
-      ...dayData,
-      [mealId]: mealData.filter(e => e.id !== entryId)
-    }, { merge: true });
+    if (!entryToRemove) return;
+
+    try {
+      await setDoc(doc(db, 'mealPlans', dateKey), {
+        ...dayData,
+        [mealId]: mealData.filter(e => e.id !== entryId)
+      }, { merge: true });
+
+      // Create Notification
+      const dayName = format(parseISO(dateKey), 'EEEE d', { locale: it });
+      const noteText = `Pasto "${entryToRemove.text}" rimosso da ${dayName}`;
+      const notifId = generateId();
+      await setDoc(doc(db, 'notifications', notifId), {
+        text: noteText,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e: any) {
+      console.error("[FIREBASE REMOVE ERROR]:", e);
+    }
   };
 
   const handleUpdateAssignee = async (dateKey: string, mealId: string, entryId: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => {
