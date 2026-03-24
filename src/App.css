@@ -290,6 +290,47 @@ body {
   box-shadow: 0 0 0 4px rgba(66, 153, 225, 0.05);
 }
 
+/* Notes Card Styles */
+.notes-card {
+  background-color: #ffffff;
+  border-radius: 28px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03), 0 2px 5px rgba(0, 0, 0, 0.02);
+}
+
+.notes-header {
+  margin-bottom: 1rem;
+}
+
+.notes-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #1a202c;
+  margin: 0;
+}
+
+.notes-textarea {
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid #edf2f7;
+  border-radius: 16px;
+  padding: 1rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: #4a5568;
+  resize: vertical;
+  background-color: #fcfcfc;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.notes-textarea:focus {
+  outline: none;
+  border-color: #bee3f8;
+  background-color: #fff;
+  box-shadow: 0 0 0 4px rgba(66, 153, 225, 0.05);
+}
+
 .grid-container {
   display: flex;
   flex-direction: column;
