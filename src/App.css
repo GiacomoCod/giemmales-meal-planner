@@ -544,6 +544,19 @@ body {
   transition: background-color 0.2s;
 }
 
+.meal-edit-input {
+  flex: 1;
+  border: 1px solid #bee3f8;
+  border-radius: 8px;
+  padding: 0.2rem 0.4rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  outline: none;
+  background-color: #fff;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+  width: 100%;
+}
+
 .meal-entry-text:hover {
   background-color: rgba(0,0,0,0.03);
 }

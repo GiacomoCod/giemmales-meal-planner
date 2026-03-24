@@ -94,12 +94,12 @@ function MealSlot({
 
   const startEditing = (entry: MealEntry) => {
     setEditingId(entry.id);
-    setEditingValue(entry.text);
+    setEditText(entry.text);
   };
 
   const saveEdit = (id: string) => {
-    if (editingValue.trim() && editingValue.trim() !== entries.find(e => e.id === id)?.text) {
-      onUpdateText(id, editingValue.trim());
+    if (editText.trim() && editText.trim() !== entries.find(e => e.id === id)?.text) {
+      onUpdateText(id, editText.trim());
     }
     setEditingId(null);
   };
@@ -125,28 +125,21 @@ function MealSlot({
             
             {editingId === entry.id ? (
               <input 
-                className="edit-entry-input"
+                className="meal-edit-input"
                 autoFocus
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
-                onBlur={() => {
-                  onUpdateText(entry.id, editText);
-                  setEditingId(null);
-                }}
+                onBlur={() => saveEdit(entry.id)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    onUpdateText(entry.id, editText);
-                    setEditingId(null);
-                  }
+                  if (e.key === 'Enter') saveEdit(entry.id);
+                  if (e.key === 'Escape') setEditingId(null);
                 }}
               />
             ) : (
               <span 
                 className="meal-entry-text" 
-                onClick={() => {
-                  setEditingId(entry.id);
-                  setEditText(entry.text);
-                }}
+                onClick={() => startEditing(entry)}
+                title="Clicca per modificare"
               >
                 {entry.text}
               </span>
