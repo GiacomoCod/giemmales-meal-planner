@@ -38,7 +38,7 @@ const MEALS = [
 ];
 
 const PASTEL_VARS = [
-  'var(--col-lunedi)', 'var(--col-martedi)', 'var(--col-mercoledi)', 
+  'var(--col-lunedi)', 'var(--col-martedi)', 'var(--col-mercoledi)',
   'var(--col-giovedi)', 'var(--col-venerdi)', 'var(--col-sabato)', 'var(--col-domenica)'
 ];
 
@@ -54,14 +54,14 @@ type MealPlan = {
   };
 };
 
-function MealSlot({ 
+function MealSlot({
   meal, entries, onAdd, onRemove, onUpdateAssignee
-}: { 
-  meal: { id: string; label: string; Icon: any }; 
-  entries: MealEntry[]; 
-  onAdd: (text: string, assignee: 'Ale'|'Giem'|'Giemmale') => void;
+}: {
+  meal: { id: string; label: string; Icon: any };
+  entries: MealEntry[];
+  onAdd: (text: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => void;
   onRemove: (id: string) => void;
-  onUpdateAssignee: (id: string, newAssignee: 'Ale'|'Giem'|'Giemmale') => void;
+  onUpdateAssignee: (id: string, newAssignee: 'Ale' | 'Giem' | 'Giemmale') => void;
 }) {
   const [text, setText] = useState('');
   const Icon = meal.Icon;
@@ -74,7 +74,7 @@ function MealSlot({
     }
   };
 
-  const cycleAssignee = (current: 'Ale'|'Giem'|'Giemmale') => {
+  const cycleAssignee = (current: 'Ale' | 'Giem' | 'Giemmale') => {
     if (current === 'Giemmale') return 'Ale';
     if (current === 'Ale') return 'Giem';
     return 'Giemmale';
@@ -86,11 +86,11 @@ function MealSlot({
         <Icon className="meal-icon" size={20} strokeWidth={2.5} />
         <h3 className="meal-title">{meal.label}</h3>
       </div>
-      
+
       <ul className="meal-entries">
         {entries.map(entry => (
           <li key={entry.id} className="meal-entry">
-            <button 
+            <button
               type="button"
               className={`assignee-badge assignee-${entry.assignee.toLowerCase()}`}
               onClick={() => onUpdateAssignee(entry.id, cycleAssignee(entry.assignee))}
@@ -100,7 +100,7 @@ function MealSlot({
             </button>
             <span className="meal-entry-text">{entry.text}</span>
             <button className="del-entry-btn" type="button" onClick={() => onRemove(entry.id)}>
-               <Trash2 size={13} />
+              <Trash2 size={13} />
             </button>
           </li>
         ))}
@@ -108,11 +108,11 @@ function MealSlot({
 
       <form className="add-entry-form" onSubmit={handleAdd}>
         <div className="entry-input-group">
-          <input 
-            type="text" 
-            placeholder="Aggiungi pasto..." 
-            value={text} 
-            onChange={e => setText(e.target.value)} 
+          <input
+            type="text"
+            placeholder="Aggiungi pasto..."
+            value={text}
+            onChange={e => setText(e.target.value)}
           />
         </div>
       </form>
@@ -133,10 +133,11 @@ function App() {
   const [mealPlan, setMealPlan] = useState<MealPlan>({});
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
   const [weekNotes, setWeekNotes] = useState<string>('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const filteredSuggestions = SUGGESTIONS.filter(item => 
+  const filteredSuggestions = SUGGESTIONS.filter(item =>
     item.text.toLowerCase().includes(newItemText.toLowerCase()) && newItemText.length > 0
   );
 
@@ -144,21 +145,21 @@ function App() {
     // LocalStorage automatic silent migration to Firebase
     const savedShopping = localStorage.getItem('shoppingListData');
     if (savedShopping) {
-       try {
-         const list = JSON.parse(savedShopping) as ShoppingItem[];
-         list.forEach(item => setDoc(doc(db, 'shoppingList', item.id), item));
-         localStorage.removeItem('shoppingListData');
-       } catch (e) {}
+      try {
+        const list = JSON.parse(savedShopping) as ShoppingItem[];
+        list.forEach(item => setDoc(doc(db, 'shoppingList', item.id), item));
+        localStorage.removeItem('shoppingListData');
+      } catch (e) { }
     }
     const savedMeals = localStorage.getItem('mealPlannerData');
     if (savedMeals) {
-       try {
-         const plans = JSON.parse(savedMeals) as MealPlan;
-         Object.keys(plans).forEach(dateKey => {
-           setDoc(doc(db, 'mealPlans', dateKey), plans[dateKey]);
-         });
-         localStorage.removeItem('mealPlannerData');
-       } catch (e) {}
+      try {
+        const plans = JSON.parse(savedMeals) as MealPlan;
+        Object.keys(plans).forEach(dateKey => {
+          setDoc(doc(db, 'mealPlans', dateKey), plans[dateKey]);
+        });
+        localStorage.removeItem('mealPlannerData');
+      } catch (e) { }
     }
 
     // Real-time Firestore Listeners
@@ -175,7 +176,6 @@ function App() {
       },
       (error) => {
         console.error("[FIREBASE MEALS ERROR]:", error);
-        alert("Errore caricamento Pasti (controlla console): " + error.message);
       }
     );
 
@@ -187,7 +187,6 @@ function App() {
       },
       (error) => {
         console.error("[FIREBASE SHOPPING ERROR]:", error);
-        alert("Errore caricamento Spesa (controlla console): " + error.message);
       }
     );
 
@@ -219,11 +218,14 @@ function App() {
 
   const handleUpdateNotes = async (content: string) => {
     setWeekNotes(content);
+    setIsSavingNotes(true);
     const weekKey = format(selectedWeekStart, 'yyyy-MM-dd');
     try {
       await setDoc(doc(db, 'weekNotes', weekKey), { content }, { merge: true });
+      setTimeout(() => setIsSavingNotes(false), 800);
     } catch (error: any) {
       console.error("[FIREBASE NOTES SAVE ERROR]:", error);
+      setIsSavingNotes(false);
     }
   };
 
@@ -232,17 +234,15 @@ function App() {
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemText.trim()) return;
-    
+
     const newItem: ShoppingItem = { id: generateId(), text: newItemText.trim(), checked: false };
     setNewItemText('');
     setShowSuggestions(false);
-    
+
     try {
-      console.log("[FIREBASE] Salvando ingrediente:", newItem);
       await setDoc(doc(db, 'shoppingList', newItem.id), newItem);
     } catch (err: any) {
       console.error("[FIREBASE SET ERROR]:", err);
-      alert("ERRORE salvataggio: " + err.message);
     }
   };
 
@@ -250,51 +250,49 @@ function App() {
     const newItem: ShoppingItem = { id: generateId(), text: `${icon} ${text}`, checked: false };
     setNewItemText('');
     setShowSuggestions(false);
-    
-    try { await setDoc(doc(db, 'shoppingList', newItem.id), newItem); } catch(e:any) { alert("ERRORE: " + e.message); }
+
+    try { await setDoc(doc(db, 'shoppingList', newItem.id), newItem); } catch (e: any) { console.error(e); }
   };
 
   const toggleItem = async (id: string) => {
     const item = shoppingList.find(i => i.id === id);
     if (!item) return;
-    try { await updateDoc(doc(db, 'shoppingList', id), { checked: !item.checked }); } catch(e:any) { alert("ERRORE: " + e.message); }
+    try { await updateDoc(doc(db, 'shoppingList', id), { checked: !item.checked }); } catch (e: any) { console.error(e); }
   };
 
   const deleteItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try { await deleteDoc(doc(db, 'shoppingList', id)); } catch(e:any) { alert("ERRORE: " + e.message); }
+    try { await deleteDoc(doc(db, 'shoppingList', id)); } catch (e: any) { console.error(e); }
   };
 
-  const handleAddMealEntry = async (dateKey: string, mealId: string, text: string, assignee: 'Ale'|'Giem'|'Giemmale') => {
+  const handleAddMealEntry = async (dateKey: string, mealId: string, text: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => {
     const newEntry: MealEntry = { id: generateId(), text, assignee };
     const dayData = mealPlan[dateKey] || {};
-    
+
     try {
-      console.log("[FIREBASE] Salvando Pasto:", dateKey, newEntry);
       await setDoc(doc(db, 'mealPlans', dateKey), {
         ...dayData,
         [mealId]: [...(dayData[mealId] || []), newEntry]
       }, { merge: true });
-    } catch(e:any) { 
+    } catch (e: any) {
       console.error("[FIREBASE MEALS SET ERROR]:", e);
-      alert("ERRORE salvataggio pasto: " + e.message); 
     }
   };
 
   const handleRemoveMealEntry = async (dateKey: string, mealId: string, entryId: string) => {
     const dayData = mealPlan[dateKey] || {};
     const mealData = dayData[mealId] || [];
-    
+
     await setDoc(doc(db, 'mealPlans', dateKey), {
       ...dayData,
       [mealId]: mealData.filter(e => e.id !== entryId)
     }, { merge: true });
   };
 
-  const handleUpdateAssignee = async (dateKey: string, mealId: string, entryId: string, assignee: 'Ale'|'Giem'|'Giemmale') => {
+  const handleUpdateAssignee = async (dateKey: string, mealId: string, entryId: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => {
     const dayData = mealPlan[dateKey] || {};
     const mealData = dayData[mealId] || [];
-    
+
     await setDoc(doc(db, 'mealPlans', dateKey), {
       ...dayData,
       [mealId]: mealData.map(e => e.id === entryId ? { ...e, assignee } : e)
@@ -308,7 +306,7 @@ function App() {
   const monthEnd = endOfMonth(monthStart);
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-  
+
   const calendarDays = [];
   let dayIterator = calendarStart;
   while (dayIterator <= calendarEnd) {
@@ -319,7 +317,7 @@ function App() {
   const selectedWeekEnd = endOfWeek(selectedWeekStart, { weekStartsOn: 1 });
   const activeWeekDays = Array.from({ length: 7 }).map((_, i) => addDays(selectedWeekStart, i));
 
-  const [activeTab, setActiveTab] = useState<'planner'|'shopping'>('planner');
+  const [activeTab, setActiveTab] = useState<'planner' | 'shopping'>('planner');
 
   return (
     <div className="app-wrapper">
@@ -329,16 +327,16 @@ function App() {
             <span className="brand-icon">🍽️</span>
             <h1 className="nav-title">Meal Planner</h1>
           </div>
-          
+
           <div className="nav-tabs">
-            <button 
+            <button
               className={`nav-tab ${activeTab === 'planner' ? 'active' : ''}`}
               onClick={() => setActiveTab('planner')}
             >
               <CalendarIcon size={20} strokeWidth={2.5} />
               <span>Calendario Menù</span>
             </button>
-            <button 
+            <button
               className={`nav-tab ${activeTab === 'shopping' ? 'active' : ''}`}
               onClick={() => setActiveTab('shopping')}
             >
@@ -346,7 +344,7 @@ function App() {
               <span>Lista Spesa</span>
             </button>
           </div>
-          
+
           <div className="nav-spacer"></div>
         </div>
       </nav>
@@ -370,8 +368,8 @@ function App() {
                       const isSelectedWeek = day >= selectedWeekStart && day <= selectedWeekEnd;
                       const isCurrentMonth = isSameMonth(day, monthStart);
                       return (
-                        <div 
-                          key={day.toString()} 
+                        <div
+                          key={day.toString()}
                           className={`calendar-cell ${!isCurrentMonth ? 'muted' : ''} ${isSelectedWeek ? 'selected-week' : ''}`}
                           onClick={() => {
                             setSelectedWeekStart(startOfWeek(day, { weekStartsOn: 1 }));
@@ -388,6 +386,7 @@ function App() {
                 <div className="notes-card">
                   <div className="notes-header">
                     <h3 className="notes-title">Note della Settimana 📝</h3>
+                    {isSavingNotes && <span className="notes-saving">Salvataggio...</span>}
                   </div>
                   <textarea
                     className="notes-textarea"
@@ -399,35 +398,35 @@ function App() {
               </div>
             </aside>
 
-      <main className="main-content">
-        <div className="grid-container">
-          {activeWeekDays.map((dayDate) => {
-            const dateKey = format(dayDate, 'yyyy-MM-dd');
-            const dayName = format(dayDate, 'EEEE d', { locale: it });
-            
-            const jsDay = dayDate.getDay(); 
-            const cssIndex = jsDay === 0 ? 6 : jsDay - 1; 
+        <main className="main-content">
+          <div className="grid-container">
+            {activeWeekDays.map((dayDate) => {
+              const dateKey = format(dayDate, 'yyyy-MM-dd');
+              const dayName = format(dayDate, 'EEEE d', { locale: it });
 
-            return (
-              <div key={dateKey} className="day-card" style={{ backgroundColor: PASTEL_VARS[cssIndex] }}>
-                <h2 className="day-title">{dayName}</h2>
-                <div className="meals-container">
-                  {MEALS.map((meal) => (
-                    <MealSlot 
-                      key={meal.id} 
-                      meal={meal} 
-                      entries={mealPlan[dateKey]?.[meal.id] || []} 
-                      onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
-                      onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
-                      onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
-                    />
-                  ))}
+              const jsDay = dayDate.getDay();
+              const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
+
+              return (
+                <div key={dateKey} className="day-card" style={{ backgroundColor: PASTEL_VARS[cssIndex] }}>
+                  <h2 className="day-title">{dayName}</h2>
+                  <div className="meals-container">
+                    {MEALS.map((meal) => (
+                      <MealSlot
+                        key={meal.id}
+                        meal={meal}
+                        entries={mealPlan[dateKey]?.[meal.id] || []}
+                        onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
+                        onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
+                        onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </main>
+              );
+            })}
+          </div>
+        </main>
       </>
       )}
 
@@ -435,70 +434,70 @@ function App() {
         <main className="main-content shopping-only">
           <section className="shopping-section">
             <div className="shopping-card">
-            <div className="shopping-header">
-              <ShoppingCart className="shopping-icon" size={26} strokeWidth={2.5} />
-              <h2>Lista della Spesa</h2>
-            </div>
-            
-            <form className="shopping-form" onSubmit={handleAddItem}>
-              <div className="shopping-input-wrapper">
-                <input 
-                  type="text" 
-                  className="shopping-input" 
-                  placeholder="Cerca o aggiungi..." 
-                  value={newItemText}
-                  onChange={e => setNewItemText(e.target.value)}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                />
-                {showSuggestions && filteredSuggestions.length > 0 && (
-                  <ul className="suggestions-dropdown">
-                    {filteredSuggestions.map(suggestion => (
-                      <li 
-                        key={suggestion.text} 
-                        className="suggestion-item"
-                        onClick={() => handleAddSuggestion(suggestion.text, suggestion.icon)}
-                      >
-                        <div className="suggestion-info">
-                          <span className="suggestion-icon">{suggestion.icon}</span>
-                          <span className="suggestion-name">{suggestion.text}</span>
-                        </div>
-                        <button className="suggestion-add-btn" type="button">
-                          <Plus size={16} strokeWidth={3} />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <div className="shopping-header">
+                <ShoppingCart className="shopping-icon" size={26} strokeWidth={2.5} />
+                <h2>Lista della Spesa</h2>
               </div>
-              <button type="submit" className="shopping-btn">
-                Aggiungi
-              </button>
-            </form>
 
-            <ul className="shopping-list">
-              {shoppingList.map(item => (
-                <li key={item.id} className={`shopping-item ${item.checked ? 'checked' : ''}`} onClick={() => toggleItem(item.id)}>
-                  <div className="checkbox">
-                    {item.checked && <Check size={14} strokeWidth={3.5} />}
-                  </div>
-                  <span className="item-text">{item.text}</span>
-                  <button 
-                    className="delete-btn" 
-                    onClick={(e) => deleteItem(item.id, e)}
-                    title="Rimuovi"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
+              <form className="shopping-form" onSubmit={handleAddItem}>
+                <div className="shopping-input-wrapper">
+                  <input
+                    type="text"
+                    className="shopping-input"
+                    placeholder="Cerca o aggiungi..."
+                    value={newItemText}
+                    onChange={e => setNewItemText(e.target.value)}
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  />
+                  {showSuggestions && filteredSuggestions.length > 0 && (
+                    <ul className="suggestions-dropdown">
+                      {filteredSuggestions.map(suggestion => (
+                        <li
+                          key={suggestion.text}
+                          className="suggestion-item"
+                          onClick={() => handleAddSuggestion(suggestion.text, suggestion.icon)}
+                        >
+                          <div className="suggestion-info">
+                            <span className="suggestion-icon">{suggestion.icon}</span>
+                            <span className="suggestion-name">{suggestion.text}</span>
+                          </div>
+                          <button className="suggestion-add-btn" type="button">
+                            <Plus size={16} strokeWidth={3} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <button type="submit" className="shopping-btn">
+                  Aggiungi
+                </button>
+              </form>
+
+              <ul className="shopping-list">
+                {shoppingList.map(item => (
+                  <li key={item.id} className={`shopping-item ${item.checked ? 'checked' : ''}`} onClick={() => toggleItem(item.id)}>
+                    <div className="checkbox">
+                      {item.checked && <Check size={14} strokeWidth={3.5} />}
+                    </div>
+                    <span className="item-text">{item.text}</span>
+                    <button
+                      className="delete-btn"
+                      onClick={(e) => deleteItem(item.id, e)}
+                      title="Rimuovi"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
         </main>
       )}
-      </div>
     </div>
+    </div >
   );
 }
 
