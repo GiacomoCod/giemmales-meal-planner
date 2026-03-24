@@ -76,14 +76,23 @@ function MealSlot({
   const [text, setText] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [pendingText, setPendingText] = useState('');
   const Icon = meal.Icon;
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (text.trim()) {
-      onAdd(text, 'Giemmale');
+      setPendingText(text.trim());
       setText('');
+      setShowAssigneePicker(true);
     }
+  };
+
+  const confirmAdd = (assignee: 'Ale' | 'Giem' | 'Giemmale') => {
+    onAdd(pendingText, assignee);
+    setPendingText('');
+    setShowAssigneePicker(false);
   };
 
   const cycleAssignee = (current: 'Ale' | 'Giem' | 'Giemmale') => {
@@ -152,16 +161,44 @@ function MealSlot({
         ))}
       </ul>
 
-      <form className="add-entry-form" onSubmit={handleAdd}>
-        <div className="entry-input-group">
-          <input
-            type="text"
-            placeholder="Aggiungi pasto..."
-            value={text}
-            onChange={e => setText(e.target.value)}
-          />
+      {!showAssigneePicker ? (
+        <form className="add-entry-form" onSubmit={handleAdd}>
+          <div className="entry-input-group">
+            <input
+              type="text"
+              placeholder="Aggiungi pasto..."
+              value={text}
+              onChange={e => setText(e.target.value)}
+            />
+          </div>
+        </form>
+      ) : (
+        <div className="assignee-picker-overlay">
+          <p className="picker-label">Chi mangia?</p>
+          <div className="picker-buttons">
+            {(['Ale', 'Giem', 'Giemmale'] as const).map(person => (
+              <button
+                key={person}
+                type="button"
+                className={`picker-btn assignee-${person.toLowerCase()}`}
+                onClick={() => confirmAdd(person)}
+              >
+                {person}
+              </button>
+            ))}
+            <button 
+              className="picker-cancel" 
+              type="button" 
+              onClick={() => {
+                setShowAssigneePicker(false);
+                setText(pendingText); // Restore text in case they changed their mind
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
-      </form>
+      )}
     </div>
   );
 }
