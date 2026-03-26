@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Croissant, Soup, Utensils, ShoppingCart, Check, Trash2, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Bell } from 'lucide-react';
+import { Croissant, Soup, Utensils, ShoppingCart, Check, Trash2, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Bell, BookOpen, Pencil, X, AlertTriangle } from 'lucide-react';
+
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths, isSameMonth } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
@@ -41,7 +42,10 @@ const MEALS = [
   { id: 'cena', label: 'Cena', Icon: Utensils }
 ];
 
+const DUMMY_RECIPES: Recipe[] = [];
+
 const PASTEL_VARS = [
+
   '#FFF5F5', // Monday - Subtle red/pink
   '#FFF9F0', // Tuesday - Subtle orange
   '#FFFDF0', // Wednesday - Subtle yellow
@@ -61,6 +65,15 @@ type MealPlan = {
   [dateKey: string]: {
     [mealId: string]: MealEntry[];
   };
+};
+
+export type Recipe = {
+  id: string;
+  title: string;
+  description: string;
+  image: string;
+  ingredients?: string[];
+  steps?: string[];
 };
 
 function MealSlot({
@@ -131,9 +144,9 @@ function MealSlot({
             >
               {entry.assignee}
             </button>
-            
+
             {editingId === entry.id ? (
-              <input 
+              <input
                 className="meal-edit-input"
                 autoFocus
                 value={editText}
@@ -145,8 +158,8 @@ function MealSlot({
                 }}
               />
             ) : (
-              <span 
-                className="meal-entry-text" 
+              <span
+                className="meal-entry-text"
                 onClick={() => startEditing(entry)}
                 title="Clicca per modificare"
               >
@@ -186,9 +199,9 @@ function MealSlot({
                 {person}
               </button>
             ))}
-            <button 
-              className="picker-cancel" 
-              type="button" 
+            <button
+              className="picker-cancel"
+              type="button"
               onClick={() => {
                 setShowAssigneePicker(false);
                 setText(pendingText); // Restore text in case they changed their mind
@@ -296,6 +309,17 @@ function App() {
       }
     );
 
+    const unsubscribeRecipes = onSnapshot(
+      collection(db, 'recipes'),
+      (snapshot) => {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe));
+        setRecipes(list);
+      },
+      (error) => {
+        console.error("[FIREBASE RECIPES ERROR]:", error);
+      }
+    );
+
     // One-time cleanup of stale test items
     const checkStaleItems = async () => {
       const q = query(collection(db, 'shoppingList'), where("text", "==", "Test from backend Server"));
@@ -308,6 +332,7 @@ function App() {
       unsubscribeMeals();
       unsubscribeShopping();
       unsubscribeNotifications();
+      unsubscribeRecipes();
     };
   }, []);
 
@@ -487,9 +512,114 @@ function App() {
   }
 
   const selectedWeekEnd = endOfWeek(selectedWeekStart, { weekStartsOn: 1 });
-  const activeWeekDays = Array.from({ length: 7 }).map((_, i) => addDays(selectedWeekStart, i));
+  const activeWeekDays = Array.from({ length: 7 }).map((_, i: number) => addDays(selectedWeekStart, i));
 
-  const [activeTab, setActiveTab] = useState<'planner' | 'shopping'>('planner');
+  const [activeTab, setActiveTab] = useState<'planner' | 'shopping' | 'recipes'>('planner');
+  const [recipes, setRecipes] = useState<Recipe[]>(DUMMY_RECIPES);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [isEditingRecipe, setIsEditingRecipe] = useState(false);
+  const [tempRecipe, setTempRecipe] = useState<Recipe | null>(null); // For editing
+  const [recipeToDelete, setRecipeToDelete] = useState<Recipe | null>(null);
+
+  const handleRecipeClick = (recipe: Recipe) => {
+    setSelectedRecipe(recipe);
+    setTempRecipe({ ...recipe });
+    setIsEditingRecipe(false);
+  };
+
+  const handleSaveRecipe = async () => {
+    if (tempRecipe) {
+      const isNew = !recipes.some(r => r.id === tempRecipe.id);
+      
+      try {
+        // Persist in Firestore
+        await setDoc(doc(db, 'recipes', tempRecipe.id), tempRecipe);
+        
+        setSelectedRecipe(tempRecipe);
+        setIsEditingRecipe(false);
+
+        // Add Notification
+        const notifId = generateId();
+        await setDoc(doc(db, 'notifications', notifId), {
+          text: isNew ? `Nuova ricetta "${tempRecipe.title}" creata` : `Ricetta "${tempRecipe.title}" modificata`,
+          timestamp: Date.now(),
+          read: false
+        });
+      } catch (e) {
+        console.error("Error saving recipe:", e);
+      }
+    }
+  };
+
+  const handleAddNewRecipe = () => {
+    const newRecipe: Recipe = {
+      id: generateId(),
+      title: '',
+      description: '',
+      image: 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800', // Default placeholder
+      ingredients: [],
+      steps: []
+    };
+    setSelectedRecipe(newRecipe);
+    setTempRecipe(newRecipe);
+    setIsEditingRecipe(true);
+  };
+
+  const handleDeleteRecipe = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const recipe = recipes.find(r => r.id === id);
+    if (recipe) {
+      setRecipeToDelete(recipe);
+    }
+  };
+
+  const confirmDeleteRecipe = async () => {
+    if (recipeToDelete) {
+      const deletedTitle = recipeToDelete.title;
+      const deletedId = recipeToDelete.id;
+      
+      try {
+        // Delete from Firestore
+        await deleteDoc(doc(db, 'recipes', deletedId));
+        
+        if (selectedRecipe?.id === deletedId) {
+          setSelectedRecipe(null);
+        }
+        
+        // Add Notification
+        const notifId = generateId();
+        await setDoc(doc(db, 'notifications', notifId), {
+          text: `Ricetta "${deletedTitle}" eliminata`,
+          timestamp: Date.now(),
+          read: false
+        });
+      } catch (e) {
+        console.error("Error deleting recipe:", e);
+      }
+
+      setRecipeToDelete(null);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteDoc(doc(db, 'notifications', id));
+    } catch (e) {
+      console.error("Error deleting notification:", e);
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && tempRecipe) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setTempRecipe({ ...tempRecipe, image: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
     <div className="app-wrapper">
@@ -497,7 +627,7 @@ function App() {
         <div className="nav-container">
           <div className="nav-brand">
             <span className="brand-icon">🍽️</span>
-            <h1 className="nav-title">Meal Planner</h1>
+            <h1 className="nav-title">Home Planner</h1>
           </div>
 
           <div className="nav-tabs">
@@ -515,11 +645,19 @@ function App() {
               <ShoppingCart size={20} strokeWidth={2.5} />
               <span>Lista Spesa</span>
             </button>
+            <button
+              className={`nav-tab ${activeTab === 'recipes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('recipes')}
+            >
+              <BookOpen size={20} strokeWidth={2.5} />
+              <span>Ricette</span>
+            </button>
+
           </div>
 
           <div className="nav-spacer">
             <div className="notif-wrapper">
-              <button 
+              <button
                 className={`notif-btn ${notifications.some(n => !n.read) ? 'has-unread' : ''}`}
                 onClick={() => setShowNotifications(!showNotifications)}
               >
@@ -541,10 +679,19 @@ function App() {
                     {notifications.length === 0 ? (
                       <p className="notif-empty">Nessuna nuova notifica</p>
                     ) : (
-                      notifications.map(n => (
+                      notifications.map((n: Notification) => (
                         <div key={n.id} className={`notif-item ${!n.read ? 'unread' : ''}`}>
-                          <p className="notif-text">{n.text}</p>
-                          <span className="notif-time">{format(n.timestamp, 'HH:mm')}</span>
+                          <div className="notif-content">
+                            <p className="notif-text">{n.text}</p>
+                            <span className="notif-time">{format(n.timestamp, 'HH:mm')}</span>
+                          </div>
+                          <button
+                            className="notif-delete-btn"
+                            onClick={(e) => handleDeleteNotification(n.id, e)}
+                            title="Elimina notifica"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                       ))
                     )}
@@ -605,107 +752,286 @@ function App() {
               </div>
             </aside>
 
-        <main className="main-content">
-          <div className="grid-container">
-            {activeWeekDays.map((dayDate) => {
-              const dateKey = format(dayDate, 'yyyy-MM-dd');
-              const dayName = format(dayDate, 'EEEE d', { locale: it });
+            <main className="main-content">
+              <div className="grid-container">
+                {activeWeekDays.map((dayDate) => {
+                  const dateKey = format(dayDate, 'yyyy-MM-dd');
+                  const dayName = format(dayDate, 'EEEE d', { locale: it });
 
-              const jsDay = dayDate.getDay();
-              const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
+                  const jsDay = dayDate.getDay();
+                  const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
 
-              return (
-                <div key={dateKey} className="day-card" style={{ backgroundColor: PASTEL_VARS[cssIndex] }}>
-                  <h2 className="day-title">{dayName}</h2>
-                  <div className="meals-container">
-                    {MEALS.map((meal) => (
-                      <MealSlot
-                        key={meal.id}
-                        meal={meal}
-                        entries={mealPlan[dateKey]?.[meal.id] || []} 
-                      onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
-                      onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
-                      onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
-                      onUpdateText={(id, newText) => handleUpdateMealEntryText(dateKey, meal.id, id, newText)}
-                    />
-                    ))}
-                  </div>
+                  return (
+                    <div key={dateKey} className="day-card" style={{ backgroundColor: PASTEL_VARS[cssIndex] }}>
+                      <h2 className="day-title">{dayName}</h2>
+                      <div className="meals-container">
+                        {MEALS.map((meal) => (
+                          <MealSlot
+                            key={meal.id}
+                            meal={meal}
+                            entries={mealPlan[dateKey]?.[meal.id] || []}
+                            onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
+                            onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
+                            onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
+                            onUpdateText={(id, newText) => handleUpdateMealEntryText(dateKey, meal.id, id, newText)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </main>
+          </>
+        )}
+
+        {activeTab === 'shopping' && (
+          <main className="main-content shopping-only">
+            <section className="shopping-section">
+              <div className="shopping-card">
+                <div className="shopping-header">
+                  <ShoppingCart className="shopping-icon" size={26} strokeWidth={2.5} />
+                  <h2>Lista della Spesa</h2>
                 </div>
-              );
-            })}
-          </div>
-        </main>
-      </>
-      )}
 
-      {activeTab === 'shopping' && (
-        <main className="main-content shopping-only">
-          <section className="shopping-section">
-            <div className="shopping-card">
-              <div className="shopping-header">
-                <ShoppingCart className="shopping-icon" size={26} strokeWidth={2.5} />
-                <h2>Lista della Spesa</h2>
+                <form className="shopping-form" onSubmit={handleAddItem}>
+                  <div className="shopping-input-wrapper">
+                    <input
+                      type="text"
+                      className="shopping-input"
+                      placeholder="Cerca o aggiungi..."
+                      value={newItemText}
+                      onChange={e => setNewItemText(e.target.value)}
+                      onFocus={() => setShowSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    />
+                    {showSuggestions && filteredSuggestions.length > 0 && (
+                      <ul className="suggestions-dropdown">
+                        {filteredSuggestions.map(suggestion => (
+                          <li
+                            key={suggestion.text}
+                            className="suggestion-item"
+                            onClick={() => handleAddSuggestion(suggestion.text, suggestion.icon)}
+                          >
+                            <div className="suggestion-info">
+                              <span className="suggestion-icon">{suggestion.icon}</span>
+                              <span className="suggestion-name">{suggestion.text}</span>
+                            </div>
+                            <button className="suggestion-add-btn" type="button">
+                              <Plus size={16} strokeWidth={3} />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <button type="submit" className="shopping-btn">
+                    Aggiungi
+                  </button>
+                </form>
+
+                <ul className="shopping-list">
+                  {shoppingList.map((item: ShoppingItem) => (
+                    <li key={item.id} className={`shopping-item ${item.checked ? 'checked' : ''}`} onClick={() => toggleItem(item.id)}>
+                      <div className="checkbox">
+                        {item.checked && <Check size={14} strokeWidth={3.5} />}
+                      </div>
+                      <span className="item-text">{item.text}</span>
+                      <button
+                        className="delete-btn"
+                        onClick={(e) => deleteItem(item.id, e)}
+                        title="Rimuovi"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          </main>
+        )}
+        {activeTab === 'recipes' && (
+          <main className="main-content recipes-only">
+            <section className="recipes-section">
+              <div className="recipes-header-row">
+                <BookOpen className="recipes-icon" size={26} strokeWidth={2.5} />
+                <h2 className="recipes-title-main">Le mie ricette</h2>
               </div>
 
-              <form className="shopping-form" onSubmit={handleAddItem}>
-                <div className="shopping-input-wrapper">
-                  <input
-                    type="text"
-                    className="shopping-input"
-                    placeholder="Cerca o aggiungi..."
-                    value={newItemText}
-                    onChange={e => setNewItemText(e.target.value)}
-                    onFocus={() => setShowSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  />
-                  {showSuggestions && filteredSuggestions.length > 0 && (
-                    <ul className="suggestions-dropdown">
-                      {filteredSuggestions.map(suggestion => (
-                        <li
-                          key={suggestion.text}
-                          className="suggestion-item"
-                          onClick={() => handleAddSuggestion(suggestion.text, suggestion.icon)}
+              <div className="recipes-grid">
+                {recipes.map(recipe => (
+                  <div key={recipe.id} className="recipe-card" onClick={() => handleRecipeClick(recipe)}>
+                    <div className="recipe-image-wrapper">
+                      <img src={recipe.image} alt={recipe.title} className="recipe-image" />
+                      <div className="recipe-overlay">
+                        <Plus size={24} color="white" />
+                      </div>
+                    </div>
+                    <div className="recipe-info">
+                      <div className="recipe-info-header">
+                        <h3 className="recipe-title">{recipe.title}</h3>
+                        <button
+                          className="recipe-card-delete"
+                          onClick={(e) => handleDeleteRecipe(recipe.id, e)}
+                          title="Elimina ricetta"
                         >
-                          <div className="suggestion-info">
-                            <span className="suggestion-icon">{suggestion.icon}</span>
-                            <span className="suggestion-name">{suggestion.text}</span>
-                          </div>
-                          <button className="suggestion-add-btn" type="button">
-                            <Plus size={16} strokeWidth={3} />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      <p className="recipe-description">{recipe.description}</p>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="recipe-card add-new-recipe" onClick={handleAddNewRecipe}>
+                  <div className="add-recipe-content">
+                    <div className="add-icon-circle">
+                      <Plus size={32} strokeWidth={2.5} />
+                    </div>
+                    <span className="add-recipe-text">Aggiungi nuova ricetta</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </main>
+        )}
+
+        {selectedRecipe && (
+          <div className="recipe-modal-overlay" onClick={() => setSelectedRecipe(null)}>
+            <div className="recipe-modal-content" onClick={e => e.stopPropagation()}>
+              <button className="modal-close-btn" onClick={() => setSelectedRecipe(null)}>
+                <X size={24} />
+              </button>
+
+              <div className="modal-body">
+                <div className={`modal-image-section ${isEditingRecipe ? 'editing-image' : ''}`}
+                  onClick={() => isEditingRecipe && document.getElementById('recipe-image-input')?.click()}
+                >
+                  <img src={isEditingRecipe ? tempRecipe?.image : selectedRecipe.image} alt={selectedRecipe.title} />
+                  <div className="modal-image-overlay">
+                    {isEditingRecipe ? (
+                      <div className="edit-image-prompt">
+                        <Plus size={32} />
+                        <span>Cambia Foto</span>
+                        <input
+                          type="file"
+                          id="recipe-image-input"
+                          hidden
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                        />
+                      </div>
+                    ) : (
+                      <button className="edit-trigger-btn" onClick={() => setIsEditingRecipe(true)}>
+                        <Pencil size={18} />
+                        <span>Modifica Ricetta</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="modal-info-section">
+                  {isEditingRecipe ? (
+                    <div className="edit-form-container">
+                      <input
+                        className="edit-title-input"
+                        value={tempRecipe?.title || ''}
+                        onChange={e => setTempRecipe(prev => prev ? { ...prev, title: e.target.value } : null)}
+                        placeholder="Titolo della ricetta"
+                      />
+                      <textarea
+                        className="edit-desc-textarea"
+                        value={tempRecipe?.description || ''}
+                        onChange={e => setTempRecipe(prev => prev ? { ...prev, description: e.target.value } : null)}
+                        placeholder="Breve descrizione"
+                      />
+
+                      <div className="edit-details-grid">
+                        <div className="edit-column">
+                          <h4>Ingredienti (uno per riga)</h4>
+                          <textarea
+                            value={tempRecipe?.ingredients?.join('\n') || ''}
+                            onChange={e => setTempRecipe(prev => prev ? { ...prev, ingredients: e.target.value.split('\n') } : null)}
+                          />
+                        </div>
+                        <div className="edit-column">
+                          <h4>Passaggi (uno per riga)</h4>
+                          <textarea
+                            value={tempRecipe?.steps?.join('\n') || ''}
+                            onChange={e => setTempRecipe(prev => prev ? { ...prev, steps: e.target.value.split('\n') } : null)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="edit-actions">
+                        <button className="cancel-btn" onClick={() => setIsEditingRecipe(false)}>Annulla</button>
+                        <button className="save-btn" onClick={handleSaveRecipe}>Salva Modifiche</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="modal-title-row">
+                        <h2 className="modal-title">{selectedRecipe.title}</h2>
+                        <button
+                          className="modal-delete-btn"
+                          onClick={() => handleDeleteRecipe(selectedRecipe.id)}
+                          title="Elimina ricetta"
+                        >
+                          <Trash2 size={20} />
+                          <span>Elimina</span>
+                        </button>
+                      </div>
+                      <p className="modal-description">{selectedRecipe.description}</p>
+
+                      <div className="recipe-details-content">
+                        <div className="ingredients-section">
+                          <h3><ShoppingCart size={18} /> Ingredienti</h3>
+                          <ul>
+                            {selectedRecipe.ingredients?.map((ing, i) => (
+                              <li key={i}>{ing}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="steps-section">
+                          <h3><BookOpen size={18} /> Preparazione</h3>
+                          <ol>
+                            {selectedRecipe.steps?.map((step, i) => (
+                              <li key={i}>{step}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
-                <button type="submit" className="shopping-btn">
-                  Aggiungi
-                </button>
-              </form>
-
-              <ul className="shopping-list">
-                {shoppingList.map(item => (
-                  <li key={item.id} className={`shopping-item ${item.checked ? 'checked' : ''}`} onClick={() => toggleItem(item.id)}>
-                    <div className="checkbox">
-                      {item.checked && <Check size={14} strokeWidth={3.5} />}
-                    </div>
-                    <span className="item-text">{item.text}</span>
-                    <button
-                      className="delete-btn"
-                      onClick={(e) => deleteItem(item.id, e)}
-                      title="Rimuovi"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              </div>
             </div>
-          </section>
-        </main>
-      )}
+          </div>
+        )}
+
+        {recipeToDelete && (
+          <div className="delete-confirm-overlay" onClick={() => setRecipeToDelete(null)}>
+            <div className="delete-confirm-banner" onClick={e => e.stopPropagation()}>
+              <div className="delete-banner-content">
+                <div className="delete-banner-icon">
+                  <AlertTriangle size={32} color="#e53e3e" strokeWidth={2.5} />
+                </div>
+                <div className="delete-banner-text">
+                  <h3>Sei sicuro di voler eliminare "{recipeToDelete.title}"?</h3>
+                  <p>Questa azione non può essere annullata.</p>
+                </div>
+              </div>
+              <div className="delete-banner-actions">
+                <button className="banner-cancel-btn" onClick={() => setRecipeToDelete(null)}>Annulla</button>
+                <button className="banner-confirm-btn" onClick={confirmDeleteRecipe}>Sì, Elimina</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-    </div >
   );
 }
 
