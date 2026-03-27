@@ -3,7 +3,7 @@ import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, Sparkle
 
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, limit } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, limit, orderBy, documentId } from 'firebase/firestore';
 import { parseISO } from 'date-fns';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -174,20 +174,13 @@ function App() {
     migrationAndCleanup();
   }, [activeProfile.id, colPath]);
 
-  // Real-time Firestore Listeners
+  // Real-time Firestore Listeners (Global/Static Collections)
   useEffect(() => {
     if (!user) return;
-    console.log("[FIREBASE] Inizializzando listeners per:", app?.options?.projectId);
-
-    const unsubscribeMeals = onSnapshot(collection(db, colPath('mealPlans')), (snapshot) => {
-      const newPlan: MealPlan = {};
-      snapshot.forEach(d => { newPlan[d.id] = d.data() as { [mealId: string]: MealEntry[] }; });
-      setMealPlan(newPlan);
-    });
+    console.log("[FIREBASE] Listeners globali per:", activeProfile.id);
 
     const unsubscribeShopping = onSnapshot(collection(db, colPath('shoppingList')), (snapshot) => {
-      const list = snapshot.docs.map(d => d.data() as ShoppingItem);
-      setShoppingList(list);
+      setShoppingList(snapshot.docs.map(d => d.data() as ShoppingItem));
     });
 
     const unsubscribeNotifications = onSnapshot(query(collection(db, colPath('notifications')), limit(20)), (snapshot) => {
@@ -198,27 +191,22 @@ function App() {
     });
 
     const unsubscribeProfilePhoto = onSnapshot(doc(db, colPath('metadata'), 'profile'), (docSnap) => {
-      if (docSnap.exists() && docSnap.data().avatarBase64) setProfileAvatar(docSnap.data().avatarBase64);
-      else setProfileAvatar(null);
+      setProfileAvatar(docSnap.exists() && docSnap.data().avatarBase64 ? docSnap.data().avatarBase64 : null);
     });
 
     const unsubscribeRecipes = onSnapshot(collection(db, colPath('recipes')), (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe));
-      setRecipes(list);
+      setRecipes(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe)));
     });
 
     const unsubscribeTags = onSnapshot(collection(db, colPath('tags')), (snapshot) => {
-      const list = snapshot.docs.map(d => d.data() as Tag);
-      setTags(list);
+      setTags(snapshot.docs.map(d => d.data() as Tag));
     });
 
     const unsubscribeEvents = onSnapshot(collection(db, colPath('events')), (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent));
-      setEvents(list);
+      setEvents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
     });
 
     return () => {
-      unsubscribeMeals();
       unsubscribeShopping();
       unsubscribeNotifications();
       unsubscribeRecipes();
@@ -226,7 +214,24 @@ function App() {
       unsubscribeTags();
       unsubscribeEvents();
     };
-  }, [activeProfile.id, colPath]);
+  }, [activeProfile.id, colPath, user]);
+
+  // Sync meal plans for the viewed window (Current Month +/- 1)
+  useEffect(() => {
+    if (!user) return;
+    const start = format(subMonths(startOfMonth(currentMonth), 1), 'yyyy-MM-dd');
+    const end = format(addMonths(endOfMonth(currentMonth), 1), 'yyyy-MM-dd');
+
+    const unsubscribeMeals = onSnapshot(
+      query(collection(db, colPath('mealPlans')), orderBy(documentId()), where(documentId(), '>=', start), where(documentId(), '<=', end)),
+      (snapshot) => {
+        const newPlan: MealPlan = {};
+        snapshot.forEach(d => { newPlan[d.id] = d.data() as { [mealId: string]: MealEntry[] }; });
+        setMealPlan(newPlan);
+      }
+    );
+    return () => unsubscribeMeals();
+  }, [activeProfile.id, colPath, currentMonth, user]);
 
   // Sync notes for the selected week
   useEffect(() => {
@@ -318,20 +323,13 @@ function App() {
   // One-shot seeding — uses getDocs so it never reacts to its own writes
   useEffect(() => {
     const seedDefaults = async () => {
-      // Mark all rooms synchronously BEFORE any await, so Strict Mode's
-      // double-invocation finds the set already populated and bails out.
-      if (hasSeededRef.current.has(activeProfile.id)) return;
+      if (!user || hasSeededRef.current.has(activeProfile.id)) return;
       hasSeededRef.current.add(activeProfile.id);
       
-      // Seed Room Tasks
-      for (const roomId of Object.keys(DEFAULT_ROOM_TASKS)) {
-        hasSeededRef.current.add(roomId);
-      }
-
-      for (const [roomId, defaults] of Object.entries(DEFAULT_ROOM_TASKS)) {
-        const q = query(collection(db, colPath('roomTasks')), where('roomId', '==', roomId));
-        const snap = await getDocs(q);
-        if (snap.empty) {
+      // Smart Seed: check if any tasks exist for this profile
+      const tasksSnap = await getDocs(query(collection(db, colPath('roomTasks')), limit(1)));
+      if (tasksSnap.empty) {
+        for (const [roomId, defaults] of Object.entries(DEFAULT_ROOM_TASKS)) {
           for (const taskName of defaults) {
             const id = generateId();
             await setDoc(doc(db, colPath('roomTasks'), id), { id, roomId, taskName, createdAt: Date.now() });
@@ -339,8 +337,8 @@ function App() {
         }
       }
 
-      // Seed Default Tags
-      const tagsSnap = await getDocs(collection(db, colPath('tags')));
+      // Smart Seed: check if any tags exist
+      const tagsSnap = await getDocs(query(collection(db, colPath('tags')), limit(1)));
       if (tagsSnap.empty) {
         if (isGiemmale) {
           const defaultTags: Tag[] = [
@@ -353,18 +351,14 @@ function App() {
           }
         } else {
           const name = activeProfile.name.split(' ')[0];
-          const defaultTag: Tag = { 
-            id: name.toLowerCase(), 
-            label: name, 
-            color: '#e3f2fd' 
-          };
+          const defaultTag: Tag = { id: name.toLowerCase(), label: name, color: '#e3f2fd' };
           await setDoc(doc(db, colPath('tags'), defaultTag.id), defaultTag);
         }
       }
     };
 
     seedDefaults();
-  }, [activeProfile.id, isGiemmale, activeProfile.name]);
+  }, [activeProfile.id, isGiemmale, activeProfile.name, colPath, user]);
 
   const handleUpdateNotes = async (content: string) => {
     setWeekNotes(content);
