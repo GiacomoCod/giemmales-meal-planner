@@ -1,250 +1,97 @@
-import { useState, useEffect } from 'react';
-import { Croissant, Soup, Utensils, ShoppingCart, Check, Trash2, Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Bell, BookOpen, Pencil, X, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, AlertTriangle, Sparkles, Home, ChevronDown, User as UserIcon } from 'lucide-react';
 
-import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths, isSameMonth } from 'date-fns';
+import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { parseISO } from 'date-fns';
-import { db, app } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import type { User } from 'firebase/auth';
+import { db, app, auth } from './firebase';
 import './App.css';
 
-const SUGGESTIONS = [
-  { text: 'Biscotti', icon: '🍪' },
-  { text: 'Birra', icon: '🍺' },
-  { text: 'Broccoli', icon: '🥦' },
-  { text: 'Burro', icon: '🧈' },
-  { text: 'Caffè', icon: '☕' },
-  { text: 'Carote', icon: '🥕' },
-  { text: 'Cipolle', icon: '🧅' },
-  { text: 'Farina', icon: '🌾' },
-  { text: 'Formaggio', icon: '🧀' },
-  { text: 'Frutta', icon: '🍎' },
-  { text: 'Latte', icon: '🥛' },
-  { text: 'Olio extravergine', icon: '🫒' },
-  { text: 'Pane', icon: '🥖' },
-  { text: 'Pasta', icon: '🍝' },
-  { text: 'Patate', icon: '🥔' },
-  { text: 'Pepe', icon: '🧂' },
-  { text: 'Pollo', icon: '🍗' },
-  { text: 'Pomodori', icon: '🍅' },
-  { text: 'Pesce', icon: '🐟' },
-  { text: 'Riso', icon: '🍚' },
-  { text: 'Sale', icon: '🧂' },
-  { text: 'Uova', icon: '🥚' },
-  { text: 'Vino', icon: '🍷' },
-  { text: 'Yogurt', icon: '🥛' },
-  { text: 'Zucchero', icon: '🍯' }
-];
-
-const MEALS = [
-  { id: 'colazione', label: 'Colazione', Icon: Croissant },
-  { id: 'pranzo', label: 'Pranzo', Icon: Soup },
-  { id: 'cena', label: 'Cena', Icon: Utensils }
-];
-
-const DUMMY_RECIPES: Recipe[] = [];
-
-const PASTEL_VARS = [
-
-  '#FFF5F5', // Monday - Subtle red/pink
-  '#FFF9F0', // Tuesday - Subtle orange
-  '#FFFDF0', // Wednesday - Subtle yellow
-  '#F0FFF4', // Thursday - Subtle green
-  '#F0FFFF', // Friday - Subtle blue/cyan
-  '#F5F5FF', // Saturday - Subtle indigo/blue
-  '#FAF5FF'  // Sunday - Subtle purple
-];
-
-export type MealEntry = {
-  id: string;
-  text: string;
-  assignee: 'Ale' | 'Giem' | 'Giemmale';
-};
-
-type MealPlan = {
-  [dateKey: string]: {
-    [mealId: string]: MealEntry[];
-  };
-};
-
-export type Recipe = {
-  id: string;
-  title: string;
-  description: string;
-  image: string;
-  ingredients?: string[];
-  steps?: string[];
-};
-
-function MealSlot({
-  meal, entries, onAdd, onRemove, onUpdateAssignee, onUpdateText
-}: {
-  meal: { id: string; label: string; Icon: any };
-  entries: MealEntry[];
-  onAdd: (text: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => void;
-  onRemove: (id: string) => void;
-  onUpdateAssignee: (id: string, newAssignee: 'Ale' | 'Giem' | 'Giemmale') => void;
-  onUpdateText: (id: string, newText: string) => void;
-}) {
-  const [text, setText] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
-  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
-  const [pendingText, setPendingText] = useState('');
-  const Icon = meal.Icon;
-
-  const handleAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (text.trim()) {
-      setPendingText(text.trim());
-      setText('');
-      setShowAssigneePicker(true);
-    }
-  };
-
-  const confirmAdd = (assignee: 'Ale' | 'Giem' | 'Giemmale') => {
-    onAdd(pendingText, assignee);
-    setPendingText('');
-    setShowAssigneePicker(false);
-  };
-
-  const cycleAssignee = (current: 'Ale' | 'Giem' | 'Giemmale') => {
-    if (current === 'Giemmale') return 'Ale';
-    if (current === 'Ale') return 'Giem';
-    return 'Giemmale';
-  };
-
-  const startEditing = (entry: MealEntry) => {
-    setEditingId(entry.id);
-    setEditText(entry.text);
-  };
-
-  const saveEdit = (id: string) => {
-    if (editText.trim() && editText.trim() !== entries.find(e => e.id === id)?.text) {
-      onUpdateText(id, editText.trim());
-    }
-    setEditingId(null);
-  };
-
-  return (
-    <div className="meal-slot">
-      <div className="meal-header">
-        <Icon className="meal-icon" size={20} strokeWidth={2.5} />
-        <h3 className="meal-title">{meal.label}</h3>
-      </div>
-
-      <ul className="meal-entries">
-        {entries.map(entry => (
-          <li key={entry.id} className="meal-entry">
-            <button
-              type="button"
-              className={`assignee-badge assignee-${entry.assignee.toLowerCase()}`}
-              onClick={() => onUpdateAssignee(entry.id, cycleAssignee(entry.assignee))}
-              title="Cambia chi mangia questo pasto"
-            >
-              {entry.assignee}
-            </button>
-
-            {editingId === entry.id ? (
-              <input
-                className="meal-edit-input"
-                autoFocus
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                onBlur={() => saveEdit(entry.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveEdit(entry.id);
-                  if (e.key === 'Escape') setEditingId(null);
-                }}
-              />
-            ) : (
-              <span
-                className="meal-entry-text"
-                onClick={() => startEditing(entry)}
-                title="Clicca per modificare"
-              >
-                {entry.text}
-              </span>
-            )}
-
-            <button className="del-entry-btn" type="button" onClick={() => onRemove(entry.id)}>
-              <Trash2 size={13} />
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {!showAssigneePicker ? (
-        <form className="add-entry-form" onSubmit={handleAdd}>
-          <div className="entry-input-group">
-            <input
-              type="text"
-              placeholder="Aggiungi pasto..."
-              value={text}
-              onChange={e => setText(e.target.value)}
-            />
-          </div>
-        </form>
-      ) : (
-        <div className="assignee-picker-overlay">
-          <p className="picker-label">Chi mangia?</p>
-          <div className="picker-buttons">
-            {(['Ale', 'Giem', 'Giemmale'] as const).map(person => (
-              <button
-                key={person}
-                type="button"
-                className={`picker-btn assignee-${person.toLowerCase()}`}
-                onClick={() => confirmAdd(person)}
-              >
-                {person}
-              </button>
-            ))}
-            <button
-              className="picker-cancel"
-              type="button"
-              onClick={() => {
-                setShowAssigneePicker(false);
-                setText(pendingText); // Restore text in case they changed their mind
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-type ShoppingItem = {
-  id: string;
-  text: string;
-  checked: boolean;
-};
-
-interface Notification {
-  id: string;
-  text: string;
-  timestamp: number;
-  read: boolean;
-}
+import { SUGGESTIONS, DEFAULT_ROOM_TASKS, DUMMY_RECIPES } from './constants';
+import type { MealEntry, MealPlan, Recipe, CleaningLog, RoomTask, TaskUnit, TaskSettings, ShoppingItem, NotificationItem } from './types';
+import { PlannerSection } from './components/PlannerSection';
+import { ShoppingListSection } from './components/ShoppingListSection';
+import { RecipesSection } from './components/RecipesSection';
+import { CleaningSection } from './components/CleaningSection';
+import { SettingsSection } from './components/SettingsSection';
+import { Login } from './components/Login';
 
 function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // Determine active profile from logged-in user context
+  const isGiemmale = user?.email === 'giemmale@homeplanner.local';
+  
+  const activeProfile = user ? {
+    id: isGiemmale ? 'giemmale' : user.uid,
+    name: isGiemmale ? 'Casa dei Giemmale' : (user.displayName || user.email?.split('@')[0] || 'La Mia Casa'),
+    title: isGiemmale ? "Giemmale's HOME PLANNER" : `${user.displayName || user.email?.split('@')[0] || 'User'}'s HOME PLANNER`
+  } : { id: 'guest', name: 'Guest', title: 'HOME PLANNER' };
+
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+
+  const colPath = (name: string) => activeProfile.id === 'giemmale' ? name : `profiles/${activeProfile.id}/${name}`;
+
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
 
   const [mealPlan, setMealPlan] = useState<MealPlan>({});
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
   const [weekNotes, setWeekNotes] = useState<string>('');
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeTab, setActiveTab] = useState<'planner' | 'shopping' | 'recipes' | 'cleaning' | 'settings'>('planner');
+  const [recipes, setRecipes] = useState<Recipe[]>(DUMMY_RECIPES);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [isEditingRecipe, setIsEditingRecipe] = useState(false);
+  const [tempRecipe, setTempRecipe] = useState<Recipe | null>(null); // For editing
+  const [recipeToDelete, setRecipeToDelete] = useState<Recipe | null>(null);
+  const [cleaningNotes, setCleaningNotes] = useState<string>('');
+  const [isSavingCleaningNotes, setIsSavingCleaningNotes] = useState(false);
+  const [cleaningLogs, setCleaningLogs] = useState<CleaningLog[]>([]);
+  const [roomTasks, setRoomTasks] = useState<RoomTask[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const [taskSettings, setTaskSettings] = useState<TaskSettings>({});
+  const [showTaskSettings, setShowTaskSettings] = useState<string | null>(null);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskName, setNewTaskName] = useState('');
+  const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
+  const [datePickerTaskId, setDatePickerTaskId] = useState<string | null>(null);
+  const [customDate, setCustomDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [editingFrequency, setEditingFrequency] = useState<{value: number, unit: TaskUnit}>({value: 1, unit: 'settimane'});
+  const hasSeededRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    setMealPlan({});
+    setShoppingList([]);
+    setNotifications([]);
+    setRecipes([]);
+    setWeekNotes('');
+    setCleaningNotes('');
+    setCleaningLogs([]);
+    setRoomTasks([]);
+    setTaskSettings({});
+  }, [activeProfile.id]);
 
   const filteredSuggestions = SUGGESTIONS.filter(item =>
     item.text.toLowerCase().includes(newItemText.toLowerCase()) && newItemText.length > 0
   );
+
+  // Authentication Listener
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     // LocalStorage automatic silent migration to Firebase
@@ -252,7 +99,7 @@ function App() {
     if (savedShopping) {
       try {
         const list = JSON.parse(savedShopping) as ShoppingItem[];
-        list.forEach(item => setDoc(doc(db, 'shoppingList', item.id), item));
+        list.forEach(item => setDoc(doc(db, colPath('shoppingList'), item.id), item));
         localStorage.removeItem('shoppingListData');
       } catch (e) { }
     }
@@ -261,7 +108,7 @@ function App() {
       try {
         const plans = JSON.parse(savedMeals) as MealPlan;
         Object.keys(plans).forEach(dateKey => {
-          setDoc(doc(db, 'mealPlans', dateKey), plans[dateKey]);
+          setDoc(doc(db, colPath('mealPlans'), dateKey), plans[dateKey]);
         });
         localStorage.removeItem('mealPlannerData');
       } catch (e) { }
@@ -271,7 +118,7 @@ function App() {
     console.log("[FIREBASE] Inizializzando listeners per:", app?.options?.projectId);
 
     const unsubscribeMeals = onSnapshot(
-      collection(db, 'mealPlans'),
+      collection(db, colPath('mealPlans')),
       (snapshot) => {
         const newPlan: MealPlan = {};
         snapshot.forEach(d => {
@@ -285,7 +132,7 @@ function App() {
     );
 
     const unsubscribeShopping = onSnapshot(
-      collection(db, 'shoppingList'),
+      collection(db, colPath('shoppingList')),
       (snapshot) => {
         const list = snapshot.docs.map(d => d.data() as ShoppingItem);
         setShoppingList(list);
@@ -296,10 +143,10 @@ function App() {
     );
 
     const unsubscribeNotifications = onSnapshot(
-      collection(db, 'notifications'),
+      collection(db, colPath('notifications')),
       (snapshot) => {
         const list = snapshot.docs
-          .map(d => ({ id: d.id, ...d.data() } as Notification))
+          .map(d => ({ id: d.id, ...d.data() } as NotificationItem))
           .sort((a, b) => b.timestamp - a.timestamp)
           .slice(0, 10); // Keep only last 10
         setNotifications(list);
@@ -309,8 +156,20 @@ function App() {
       }
     );
 
+    const unsubscribeProfilePhoto = onSnapshot(
+      doc(db, colPath('metadata'), 'profile'),
+      (docSnap) => {
+        if (docSnap.exists() && docSnap.data().avatarBase64) {
+          setProfileAvatar(docSnap.data().avatarBase64);
+        } else {
+          setProfileAvatar(null);
+        }
+      },
+      (error) => console.error("[FIREBASE AVATAR ERROR]:", error)
+    );
+
     const unsubscribeRecipes = onSnapshot(
-      collection(db, 'recipes'),
+      collection(db, colPath('recipes')),
       (snapshot) => {
         const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe));
         setRecipes(list);
@@ -322,7 +181,7 @@ function App() {
 
     // One-time cleanup of stale test items
     const checkStaleItems = async () => {
-      const q = query(collection(db, 'shoppingList'), where("text", "==", "Test from backend Server"));
+      const q = query(collection(db, colPath('shoppingList')), where("text", "==", "Test from backend Server"));
       const snap = await getDocs(q);
       snap.forEach(async (d) => { await deleteDoc(d.ref); });
     };
@@ -333,14 +192,15 @@ function App() {
       unsubscribeShopping();
       unsubscribeNotifications();
       unsubscribeRecipes();
+      unsubscribeProfilePhoto();
     };
-  }, []);
+  }, [activeProfile.id]);
 
   // Sync notes for the selected week
   useEffect(() => {
     const weekKey = format(selectedWeekStart, 'yyyy-MM-dd');
     const unsubscribeNotes = onSnapshot(
-      doc(db, 'weekNotes', weekKey),
+      doc(db, colPath('weekNotes'), weekKey),
       (docSnap) => {
         if (docSnap.exists()) {
           setWeekNotes(docSnap.data().content || '');
@@ -354,18 +214,124 @@ function App() {
     );
 
     return () => unsubscribeNotes();
-  }, [selectedWeekStart]);
+  }, [selectedWeekStart, activeProfile.id]);
+
+  // Sync cleaning notes
+  useEffect(() => {
+    const weekKey = format(selectedWeekStart, 'yyyy-MM-dd');
+    const unsubscribeCleaning = onSnapshot(
+      doc(db, colPath('cleaningNotes'), weekKey),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setCleaningNotes(docSnap.data().content || '');
+        } else {
+          setCleaningNotes('');
+        }
+      },
+      (error) => {
+        console.error("[FIREBASE CLEANING NOTES ERROR]:", error);
+      }
+    );
+
+    return () => unsubscribeCleaning();
+  }, [selectedWeekStart, activeProfile.id]);
+
+  // Sync task settings
+  useEffect(() => {
+    const unsubscribeSettings = onSnapshot(collection(db, colPath('taskSettings')), (snapshot) => {
+      const settings: TaskSettings = {};
+      snapshot.docs.forEach(d => {
+        const data = d.data();
+        if (typeof data.weeks === 'number') {
+          settings[d.id] = { value: data.weeks, unit: 'settimane' };
+        } else {
+          settings[d.id] = { value: data.value, unit: data.unit as TaskUnit };
+        }
+      });
+      setTaskSettings(settings);
+    });
+    return () => unsubscribeSettings();
+  }, [activeProfile.id]);
+
+  // Sync cleaning logs
+  useEffect(() => {
+    const unsubscribeLogs = onSnapshot(
+      collection(db, colPath('cleaningLogs')),
+      (snapshot) => {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CleaningLog));
+        setCleaningLogs(list);
+      },
+      (error) => {
+        console.error("[FIREBASE CLEANING LOGS ERROR]:", error);
+      }
+    );
+    return () => unsubscribeLogs();
+  }, [activeProfile.id]);
+
+  // Sync room tasks — pure listener, no side-effects
+  useEffect(() => {
+    const unsubscribeRoomTasks = onSnapshot(
+      collection(db, colPath('roomTasks')),
+      (snapshot) => {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as RoomTask));
+        setRoomTasks(list);
+      },
+      (error) => {
+        console.error('[FIREBASE ROOM TASKS ERROR]:', error);
+      }
+    );
+    return () => unsubscribeRoomTasks();
+  }, [activeProfile.id]);
+
+  // One-shot seeding — uses getDocs so it never reacts to its own writes
+  useEffect(() => {
+    const seedDefaults = async () => {
+      // Mark all rooms synchronously BEFORE any await, so Strict Mode's
+      // double-invocation finds the set already populated and bails out.
+      if (hasSeededRef.current.has(activeProfile.id)) return;
+      hasSeededRef.current.add(activeProfile.id);
+      for (const roomId of Object.keys(DEFAULT_ROOM_TASKS)) {
+        hasSeededRef.current.add(roomId);
+      }
+
+      for (const [roomId, defaults] of Object.entries(DEFAULT_ROOM_TASKS)) {
+        const q = query(collection(db, colPath('roomTasks')), where('roomId', '==', roomId));
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          for (const taskName of defaults) {
+            const id = generateId();
+            await setDoc(doc(db, colPath('roomTasks'), id), { id, roomId, taskName, createdAt: Date.now() });
+          }
+        }
+      }
+    };
+
+    seedDefaults();
+  }, [activeProfile.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpdateNotes = async (content: string) => {
     setWeekNotes(content);
     setIsSavingNotes(true);
     const weekKey = format(selectedWeekStart, 'yyyy-MM-dd');
     try {
-      await setDoc(doc(db, 'weekNotes', weekKey), { content }, { merge: true });
+      await setDoc(doc(db, colPath('weekNotes'), weekKey), { content }, { merge: true });
       setTimeout(() => setIsSavingNotes(false), 800);
     } catch (error: any) {
       console.error("[FIREBASE NOTES SAVE ERROR]:", error);
       setIsSavingNotes(false);
+    }
+  };
+
+  const handleUpdateCleaningNotes = async (content: string) => {
+    setCleaningNotes(content);
+    setIsSavingCleaningNotes(true);
+    const weekKey = format(selectedWeekStart, 'yyyy-MM-dd');
+    try {
+      await setDoc(doc(db, colPath('cleaningNotes'), weekKey), { content }, { merge: true });
+      setTimeout(() => setIsSavingCleaningNotes(false), 800);
+    } catch (error: any) {
+      console.error("[FIREBASE CLEANING NOTES SAVE ERROR]:", error);
+      setIsSavingCleaningNotes(false);
     }
   };
 
@@ -380,7 +346,7 @@ function App() {
     setShowSuggestions(false);
 
     try {
-      await setDoc(doc(db, 'shoppingList', newItem.id), newItem);
+      await setDoc(doc(db, colPath('shoppingList'), newItem.id), newItem);
     } catch (err: any) {
       console.error("[FIREBASE SET ERROR]:", err);
     }
@@ -391,18 +357,18 @@ function App() {
     setNewItemText('');
     setShowSuggestions(false);
 
-    try { await setDoc(doc(db, 'shoppingList', newItem.id), newItem); } catch (e: any) { console.error(e); }
+    try { await setDoc(doc(db, colPath('shoppingList'), newItem.id), newItem); } catch (e: any) { console.error(e); }
   };
 
   const toggleItem = async (id: string) => {
     const item = shoppingList.find(i => i.id === id);
     if (!item) return;
-    try { await updateDoc(doc(db, 'shoppingList', id), { checked: !item.checked }); } catch (e: any) { console.error(e); }
+    try { await updateDoc(doc(db, colPath('shoppingList'), id), { checked: !item.checked }); } catch (e: any) { console.error(e); }
   };
 
   const deleteItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try { await deleteDoc(doc(db, 'shoppingList', id)); } catch (e: any) { console.error(e); }
+    try { await deleteDoc(doc(db, colPath('shoppingList'), id)); } catch (e: any) { console.error(e); }
   };
 
   const handleAddMealEntry = async (dateKey: string, mealId: string, text: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => {
@@ -410,7 +376,7 @@ function App() {
     const dayData = mealPlan[dateKey] || {};
 
     try {
-      await setDoc(doc(db, 'mealPlans', dateKey), {
+      await setDoc(doc(db, colPath('mealPlans'), dateKey), {
         ...dayData,
         [mealId]: [...(dayData[mealId] || []), newEntry]
       }, { merge: true });
@@ -419,7 +385,7 @@ function App() {
       const dayName = format(parseISO(dateKey), 'EEEE d', { locale: it });
       const noteText = `Pasto "${text}" aggiunto a ${dayName} (${assignee})`;
       const notifId = generateId();
-      await setDoc(doc(db, 'notifications', notifId), {
+      await setDoc(doc(db, colPath('notifications'), notifId), {
         text: noteText,
         timestamp: Date.now(),
         read: false
@@ -438,7 +404,7 @@ function App() {
     if (!entryToRemove) return;
 
     try {
-      await setDoc(doc(db, 'mealPlans', dateKey), {
+      await setDoc(doc(db, colPath('mealPlans'), dateKey), {
         ...dayData,
         [mealId]: mealData.filter(e => e.id !== entryId)
       }, { merge: true });
@@ -447,7 +413,7 @@ function App() {
       const dayName = format(parseISO(dateKey), 'EEEE d', { locale: it });
       const noteText = `Pasto "${entryToRemove.text}" rimosso da ${dayName}`;
       const notifId = generateId();
-      await setDoc(doc(db, 'notifications', notifId), {
+      await setDoc(doc(db, colPath('notifications'), notifId), {
         text: noteText,
         timestamp: Date.now(),
         read: false
@@ -461,7 +427,7 @@ function App() {
     const dayData = mealPlan[dateKey] || {};
     const mealData = (dayData[mealId] || []) as MealEntry[];
 
-    await setDoc(doc(db, 'mealPlans', dateKey), {
+    await setDoc(doc(db, colPath('mealPlans'), dateKey), {
       ...dayData,
       [mealId]: mealData.map(e => e.id === entryId ? { ...e, assignee } : e)
     }, { merge: true });
@@ -477,7 +443,7 @@ function App() {
     const oldText = entryToUpdate.text;
 
     try {
-      await setDoc(doc(db, 'mealPlans', dateKey), {
+      await setDoc(doc(db, colPath('mealPlans'), dateKey), {
         ...dayData,
         [mealId]: mealData.map(e => e.id === entryId ? { ...e, text: newText } : e)
       }, { merge: true });
@@ -486,7 +452,7 @@ function App() {
       const dayName = format(parseISO(dateKey), 'EEEE d', { locale: it });
       const noteText = `Pasto "${oldText}" modificato in "${newText}" su ${dayName}`;
       const notifId = generateId();
-      await setDoc(doc(db, 'notifications', notifId), {
+      await setDoc(doc(db, colPath('notifications'), notifId), {
         text: noteText,
         timestamp: Date.now(),
         read: false
@@ -514,12 +480,15 @@ function App() {
   const selectedWeekEnd = endOfWeek(selectedWeekStart, { weekStartsOn: 1 });
   const activeWeekDays = Array.from({ length: 7 }).map((_, i: number) => addDays(selectedWeekStart, i));
 
-  const [activeTab, setActiveTab] = useState<'planner' | 'shopping' | 'recipes'>('planner');
-  const [recipes, setRecipes] = useState<Recipe[]>(DUMMY_RECIPES);
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
-  const [isEditingRecipe, setIsEditingRecipe] = useState(false);
-  const [tempRecipe, setTempRecipe] = useState<Recipe | null>(null); // For editing
-  const [recipeToDelete, setRecipeToDelete] = useState<Recipe | null>(null);
+  const handleUpdateTaskFrequency = async (taskType: string, value: number, unit: TaskUnit) => {
+    try {
+      await setDoc(doc(db, colPath('taskSettings'), taskType), { value, unit });
+      setShowTaskSettings(null);
+    } catch (e) {
+      console.error("Error updating task frequency:", e);
+    }
+  };
+
 
   const handleRecipeClick = (recipe: Recipe) => {
     setSelectedRecipe(recipe);
@@ -533,14 +502,14 @@ function App() {
       
       try {
         // Persist in Firestore
-        await setDoc(doc(db, 'recipes', tempRecipe.id), tempRecipe);
+        await setDoc(doc(db, colPath('recipes'), tempRecipe.id), tempRecipe);
         
         setSelectedRecipe(tempRecipe);
         setIsEditingRecipe(false);
 
         // Add Notification
         const notifId = generateId();
-        await setDoc(doc(db, 'notifications', notifId), {
+        await setDoc(doc(db, colPath('notifications'), notifId), {
           text: isNew ? `Nuova ricetta "${tempRecipe.title}" creata` : `Ricetta "${tempRecipe.title}" modificata`,
           timestamp: Date.now(),
           read: false
@@ -580,7 +549,7 @@ function App() {
       
       try {
         // Delete from Firestore
-        await deleteDoc(doc(db, 'recipes', deletedId));
+        await deleteDoc(doc(db, colPath('recipes'), deletedId));
         
         if (selectedRecipe?.id === deletedId) {
           setSelectedRecipe(null);
@@ -588,7 +557,7 @@ function App() {
         
         // Add Notification
         const notifId = generateId();
-        await setDoc(doc(db, 'notifications', notifId), {
+        await setDoc(doc(db, colPath('notifications'), notifId), {
           text: `Ricetta "${deletedTitle}" eliminata`,
           timestamp: Date.now(),
           read: false
@@ -600,11 +569,54 @@ function App() {
       setRecipeToDelete(null);
     }
   };
+  const handleCompleteTask = async (roomId: string, taskName: string, dateStr?: string) => {
+    const dateKey = dateStr || format(new Date(), 'yyyy-MM-dd');
+    const isCustomDate = !!dateStr && dateStr !== format(new Date(), 'yyyy-MM-dd');
+    const logId = generateId();
+    try {
+      await setDoc(doc(db, colPath('cleaningLogs'), logId), {
+        roomId,
+        taskType: taskName,
+        date: dateKey,
+        timestamp: Date.now()
+      });
+      const notifId = generateId();
+      await setDoc(doc(db, colPath('notifications'), notifId), {
+        text: isCustomDate
+          ? `"${taskName}" registrato per il ${format(parseISO(dateKey), 'd MMMM', { locale: it })} ✅`
+          : `"${taskName}" completato oggi ✅`,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e) {
+      console.error("Error completing task:", e);
+    }
+  };
+
+  const handleAddTask = async (roomId: string, taskName: string) => {
+    if (!taskName.trim()) return;
+    const id = generateId();
+    try {
+      await setDoc(doc(db, colPath('roomTasks'), id), { id, roomId, taskName: taskName.trim(), createdAt: Date.now() });
+      setNewTaskName('');
+      setShowAddTask(false);
+    } catch (e) {
+      console.error("Error adding task:", e);
+    }
+  };
+
+  const handleDeleteRoomTask = async (taskId: string) => {
+    try {
+      await deleteDoc(doc(db, colPath('roomTasks'), taskId));
+    } catch (e) {
+      console.error("Error deleting room task:", e);
+    }
+  };
 
   const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await deleteDoc(doc(db, 'notifications', id));
+      await deleteDoc(doc(db, colPath('notifications'), id));
     } catch (e) {
       console.error("Error deleting notification:", e);
     }
@@ -621,13 +633,58 @@ function App() {
     }
   };
 
+  if (isAuthLoading) return <div style={{display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center'}}>Caricamento...</div>;
+  if (!user) return <Login />;
+
   return (
     <div className="app-wrapper">
       <nav className="top-nav">
         <div className="nav-container">
           <div className="nav-brand">
-            <span className="brand-icon">🍽️</span>
-            <h1 className="nav-title">Home Planner</h1>
+            <div className="profile-selector">
+              <h1 
+                className="nav-title" 
+                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+              >
+                <div className="nav-icon-wrapper">
+                  <Home size={28} strokeWidth={2.5} className="nav-icon-main" />
+                  <img 
+                    src={profileAvatar || 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=200&h=200'} 
+                    alt="Av" 
+                    className="nav-icon-hover" 
+                  />
+                </div>
+                <div className="nav-title-text-wrapper">
+                  <span className="nav-title-main">HOME PLANNER</span>
+                  <span className="nav-title-hover">{activeProfile.name.toUpperCase()}</span>
+                </div>
+                <ChevronDown size={24} className={`profile-arrow ${showProfileDropdown ? 'open' : ''}`} />
+              </h1>
+              {showProfileDropdown && (
+                <div className="profile-dropdown">
+                  <div className="profile-dropdown-header">Impostazioni Account</div>
+                  <button 
+                    className={`profile-option ${activeTab === 'settings' ? 'active' : ''}`}
+                    onClick={() => {
+                      setActiveTab('settings');
+                      setShowProfileDropdown(false);
+                    }}
+                  >
+                    <UserIcon size={18} style={{ marginRight: '8px', color: '#4a5568' }} />
+                    <span className="profile-name">Gestione Account</span>
+                  </button>
+                  <button 
+                    className="profile-option"
+                    onClick={() => {
+                      signOut(auth);
+                      setShowProfileDropdown(false);
+                    }}
+                  >
+                    <span className="profile-name" style={{ color: '#e53e3e', fontWeight: 600 }}>Effettua il Logout</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="nav-tabs">
@@ -652,6 +709,13 @@ function App() {
               <BookOpen size={20} strokeWidth={2.5} />
               <span>Ricette</span>
             </button>
+            <button
+              className={`nav-tab ${activeTab === 'cleaning' ? 'active' : ''}`}
+              onClick={() => setActiveTab('cleaning')}
+            >
+              <Sparkles size={20} strokeWidth={2.5} />
+              <span>Pulizie</span>
+            </button>
 
           </div>
 
@@ -671,7 +735,7 @@ function App() {
                     <h4>Notifiche</h4>
                     <button onClick={async () => {
                       for (const n of notifications) {
-                        if (!n.read) await setDoc(doc(db, 'notifications', n.id), { ...n, read: true });
+                        if (!n.read) await setDoc(doc(db, colPath('notifications'), n.id), { ...n, read: true });
                       }
                     }}>Segna come lette</button>
                   </div>
@@ -679,7 +743,7 @@ function App() {
                     {notifications.length === 0 ? (
                       <p className="notif-empty">Nessuna nuova notifica</p>
                     ) : (
-                      notifications.map((n: Notification) => (
+                      notifications.map((n: NotificationItem) => (
                         <div key={n.id} className={`notif-item ${!n.read ? 'unread' : ''}`}>
                           <div className="notif-content">
                             <p className="notif-text">{n.text}</p>
@@ -705,312 +769,97 @@ function App() {
 
       <div className="layout">
         {activeTab === 'planner' && (
-          <>
-            <aside className="sidebar">
-              <div className="sidebar-sticky">
-                <div className="calendar-card">
-                  <div className="calendar-header">
-                    <button className="calendar-nav-btn" onClick={prevMonth}><ChevronLeft size={20} /></button>
-                    <span>{format(currentMonth, 'MMMM yyyy', { locale: it })}</span>
-                    <button className="calendar-nav-btn" onClick={nextMonth}><ChevronRight size={20} /></button>
-                  </div>
-                  <div className="calendar-grid">
-                    {['L', 'M', 'M', 'G', 'V', 'S', 'D'].map((d, i) => (
-                      <div key={i} className="calendar-day-header">{d}</div>
-                    ))}
-                    {calendarDays.map(day => {
-                      const isSelectedWeek = day >= selectedWeekStart && day <= selectedWeekEnd;
-                      const isCurrentMonth = isSameMonth(day, monthStart);
-                      return (
-                        <div
-                          key={day.toString()}
-                          className={`calendar-cell ${!isCurrentMonth ? 'muted' : ''} ${isSelectedWeek ? 'selected-week' : ''}`}
-                          onClick={() => {
-                            setSelectedWeekStart(startOfWeek(day, { weekStartsOn: 1 }));
-                            setCurrentMonth(startOfMonth(day));
-                          }}
-                        >
-                          <div className="calendar-cell-inner">{format(day, 'd')}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="notes-card">
-                  <div className="notes-header">
-                    <h3 className="notes-title">Note della Settimana 📝</h3>
-                    {isSavingNotes && <span className="notes-saving">Salvataggio...</span>}
-                  </div>
-                  <textarea
-                    className="notes-textarea"
-                    placeholder="Aggiungi note per questa settimana..."
-                    value={weekNotes}
-                    onChange={(e) => handleUpdateNotes(e.target.value)}
-                  />
-                </div>
-              </div>
-            </aside>
-
-            <main className="main-content">
-              <div className="grid-container">
-                {activeWeekDays.map((dayDate) => {
-                  const dateKey = format(dayDate, 'yyyy-MM-dd');
-                  const dayName = format(dayDate, 'EEEE d', { locale: it });
-
-                  const jsDay = dayDate.getDay();
-                  const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
-
-                  return (
-                    <div key={dateKey} className="day-card" style={{ backgroundColor: PASTEL_VARS[cssIndex] }}>
-                      <h2 className="day-title">{dayName}</h2>
-                      <div className="meals-container">
-                        {MEALS.map((meal) => (
-                          <MealSlot
-                            key={meal.id}
-                            meal={meal}
-                            entries={mealPlan[dateKey]?.[meal.id] || []}
-                            onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
-                            onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
-                            onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
-                            onUpdateText={(id, newText) => handleUpdateMealEntryText(dateKey, meal.id, id, newText)}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </main>
-          </>
+          <PlannerSection
+            currentMonth={currentMonth}
+            prevMonth={prevMonth}
+            nextMonth={nextMonth}
+            calendarDays={calendarDays}
+            selectedWeekStart={selectedWeekStart}
+            selectedWeekEnd={selectedWeekEnd}
+            monthStart={monthStart}
+            setSelectedWeekStart={setSelectedWeekStart}
+            setCurrentMonth={setCurrentMonth}
+            weekNotes={weekNotes}
+            isSavingNotes={isSavingNotes}
+            handleUpdateNotes={handleUpdateNotes}
+            activeWeekDays={activeWeekDays}
+            mealPlan={mealPlan}
+            handleAddMealEntry={handleAddMealEntry}
+            handleRemoveMealEntry={handleRemoveMealEntry}
+            handleUpdateAssignee={handleUpdateAssignee}
+            handleUpdateMealEntryText={handleUpdateMealEntryText}
+          />
         )}
-
         {activeTab === 'shopping' && (
-          <main className="main-content shopping-only">
-            <section className="shopping-section">
-              <div className="shopping-card">
-                <div className="shopping-header">
-                  <ShoppingCart className="shopping-icon" size={26} strokeWidth={2.5} />
-                  <h2>Lista della Spesa</h2>
-                </div>
-
-                <form className="shopping-form" onSubmit={handleAddItem}>
-                  <div className="shopping-input-wrapper">
-                    <input
-                      type="text"
-                      className="shopping-input"
-                      placeholder="Cerca o aggiungi..."
-                      value={newItemText}
-                      onChange={e => setNewItemText(e.target.value)}
-                      onFocus={() => setShowSuggestions(true)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    />
-                    {showSuggestions && filteredSuggestions.length > 0 && (
-                      <ul className="suggestions-dropdown">
-                        {filteredSuggestions.map(suggestion => (
-                          <li
-                            key={suggestion.text}
-                            className="suggestion-item"
-                            onClick={() => handleAddSuggestion(suggestion.text, suggestion.icon)}
-                          >
-                            <div className="suggestion-info">
-                              <span className="suggestion-icon">{suggestion.icon}</span>
-                              <span className="suggestion-name">{suggestion.text}</span>
-                            </div>
-                            <button className="suggestion-add-btn" type="button">
-                              <Plus size={16} strokeWidth={3} />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <button type="submit" className="shopping-btn">
-                    Aggiungi
-                  </button>
-                </form>
-
-                <ul className="shopping-list">
-                  {shoppingList.map((item: ShoppingItem) => (
-                    <li key={item.id} className={`shopping-item ${item.checked ? 'checked' : ''}`} onClick={() => toggleItem(item.id)}>
-                      <div className="checkbox">
-                        {item.checked && <Check size={14} strokeWidth={3.5} />}
-                      </div>
-                      <span className="item-text">{item.text}</span>
-                      <button
-                        className="delete-btn"
-                        onClick={(e) => deleteItem(item.id, e)}
-                        title="Rimuovi"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </section>
-          </main>
+          <ShoppingListSection
+            shoppingList={shoppingList}
+            newItemText={newItemText}
+            setNewItemText={setNewItemText}
+            showSuggestions={showSuggestions}
+            setShowSuggestions={setShowSuggestions}
+            filteredSuggestions={filteredSuggestions}
+            handleAddItem={handleAddItem}
+            handleAddSuggestion={handleAddSuggestion}
+            toggleItem={toggleItem}
+            deleteItem={deleteItem}
+          />
         )}
         {activeTab === 'recipes' && (
-          <main className="main-content recipes-only">
-            <section className="recipes-section">
-              <div className="recipes-header-row">
-                <BookOpen className="recipes-icon" size={26} strokeWidth={2.5} />
-                <h2 className="recipes-title-main">Le mie ricette</h2>
-              </div>
-
-              <div className="recipes-grid">
-                {recipes.map(recipe => (
-                  <div key={recipe.id} className="recipe-card" onClick={() => handleRecipeClick(recipe)}>
-                    <div className="recipe-image-wrapper">
-                      <img src={recipe.image} alt={recipe.title} className="recipe-image" />
-                      <div className="recipe-overlay">
-                        <Plus size={24} color="white" />
-                      </div>
-                    </div>
-                    <div className="recipe-info">
-                      <div className="recipe-info-header">
-                        <h3 className="recipe-title">{recipe.title}</h3>
-                        <button
-                          className="recipe-card-delete"
-                          onClick={(e) => handleDeleteRecipe(recipe.id, e)}
-                          title="Elimina ricetta"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                      <p className="recipe-description">{recipe.description}</p>
-                    </div>
-                  </div>
-                ))}
-
-                <div className="recipe-card add-new-recipe" onClick={handleAddNewRecipe}>
-                  <div className="add-recipe-content">
-                    <div className="add-icon-circle">
-                      <Plus size={32} strokeWidth={2.5} />
-                    </div>
-                    <span className="add-recipe-text">Aggiungi nuova ricetta</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </main>
+          <RecipesSection
+            recipes={recipes}
+            handleRecipeClick={handleRecipeClick}
+            handleAddNewRecipe={handleAddNewRecipe}
+            handleDeleteRecipe={handleDeleteRecipe}
+            selectedRecipe={selectedRecipe}
+            setSelectedRecipe={setSelectedRecipe}
+            isEditingRecipe={isEditingRecipe}
+            setIsEditingRecipe={setIsEditingRecipe}
+            tempRecipe={tempRecipe}
+            setTempRecipe={setTempRecipe}
+            handleImageUpload={handleImageUpload}
+            handleSaveRecipe={handleSaveRecipe}
+          />
         )}
-
-        {selectedRecipe && (
-          <div className="recipe-modal-overlay" onClick={() => setSelectedRecipe(null)}>
-            <div className="recipe-modal-content" onClick={e => e.stopPropagation()}>
-              <button className="modal-close-btn" onClick={() => setSelectedRecipe(null)}>
-                <X size={24} />
-              </button>
-
-              <div className="modal-body">
-                <div className={`modal-image-section ${isEditingRecipe ? 'editing-image' : ''}`}
-                  onClick={() => isEditingRecipe && document.getElementById('recipe-image-input')?.click()}
-                >
-                  <img src={isEditingRecipe ? tempRecipe?.image : selectedRecipe.image} alt={selectedRecipe.title} />
-                  <div className="modal-image-overlay">
-                    {isEditingRecipe ? (
-                      <div className="edit-image-prompt">
-                        <Plus size={32} />
-                        <span>Cambia Foto</span>
-                        <input
-                          type="file"
-                          id="recipe-image-input"
-                          hidden
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                        />
-                      </div>
-                    ) : (
-                      <button className="edit-trigger-btn" onClick={() => setIsEditingRecipe(true)}>
-                        <Pencil size={18} />
-                        <span>Modifica Ricetta</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="modal-info-section">
-                  {isEditingRecipe ? (
-                    <div className="edit-form-container">
-                      <input
-                        className="edit-title-input"
-                        value={tempRecipe?.title || ''}
-                        onChange={e => setTempRecipe(prev => prev ? { ...prev, title: e.target.value } : null)}
-                        placeholder="Titolo della ricetta"
-                      />
-                      <textarea
-                        className="edit-desc-textarea"
-                        value={tempRecipe?.description || ''}
-                        onChange={e => setTempRecipe(prev => prev ? { ...prev, description: e.target.value } : null)}
-                        placeholder="Breve descrizione"
-                      />
-
-                      <div className="edit-details-grid">
-                        <div className="edit-column">
-                          <h4>Ingredienti (uno per riga)</h4>
-                          <textarea
-                            value={tempRecipe?.ingredients?.join('\n') || ''}
-                            onChange={e => setTempRecipe(prev => prev ? { ...prev, ingredients: e.target.value.split('\n') } : null)}
-                          />
-                        </div>
-                        <div className="edit-column">
-                          <h4>Passaggi (uno per riga)</h4>
-                          <textarea
-                            value={tempRecipe?.steps?.join('\n') || ''}
-                            onChange={e => setTempRecipe(prev => prev ? { ...prev, steps: e.target.value.split('\n') } : null)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="edit-actions">
-                        <button className="cancel-btn" onClick={() => setIsEditingRecipe(false)}>Annulla</button>
-                        <button className="save-btn" onClick={handleSaveRecipe}>Salva Modifiche</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="modal-title-row">
-                        <h2 className="modal-title">{selectedRecipe.title}</h2>
-                        <button
-                          className="modal-delete-btn"
-                          onClick={() => handleDeleteRecipe(selectedRecipe.id)}
-                          title="Elimina ricetta"
-                        >
-                          <Trash2 size={20} />
-                          <span>Elimina</span>
-                        </button>
-                      </div>
-                      <p className="modal-description">{selectedRecipe.description}</p>
-
-                      <div className="recipe-details-content">
-                        <div className="ingredients-section">
-                          <h3><ShoppingCart size={18} /> Ingredienti</h3>
-                          <ul>
-                            {selectedRecipe.ingredients?.map((ing, i) => (
-                              <li key={i}>{ing}</li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <div className="steps-section">
-                          <h3><BookOpen size={18} /> Preparazione</h3>
-                          <ol>
-                            {selectedRecipe.steps?.map((step, i) => (
-                              <li key={i}>{step}</li>
-                            ))}
-                          </ol>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+        {activeTab === 'cleaning' && (
+          <CleaningSection
+            currentMonth={currentMonth}
+            prevMonth={prevMonth}
+            nextMonth={nextMonth}
+            calendarDays={calendarDays}
+            selectedWeekStart={selectedWeekStart}
+            selectedWeekEnd={selectedWeekEnd}
+            monthStart={monthStart}
+            setSelectedWeekStart={setSelectedWeekStart}
+            setCurrentMonth={setCurrentMonth}
+            cleaningNotes={cleaningNotes}
+            isSavingCleaningNotes={isSavingCleaningNotes}
+            handleUpdateCleaningNotes={handleUpdateCleaningNotes}
+            selectedRoom={selectedRoom}
+            setSelectedRoom={setSelectedRoom}
+            showAddTask={showAddTask}
+            setShowAddTask={setShowAddTask}
+            newTaskName={newTaskName}
+            setNewTaskName={setNewTaskName}
+            handleAddTask={handleAddTask}
+            roomTasks={roomTasks}
+            cleaningLogs={cleaningLogs}
+            handleDeleteRoomTask={handleDeleteRoomTask}
+            datePickerTaskId={datePickerTaskId}
+            setDatePickerTaskId={setDatePickerTaskId}
+            customDate={customDate}
+            setCustomDate={setCustomDate}
+            handleCompleteTask={handleCompleteTask}
+            taskSettings={taskSettings}
+            showTaskSettings={showTaskSettings}
+            setShowTaskSettings={setShowTaskSettings}
+            editingFrequency={editingFrequency}
+            setEditingFrequency={setEditingFrequency}
+            handleUpdateTaskFrequency={handleUpdateTaskFrequency}
+          />
         )}
-
+        {activeTab === 'settings' && (
+          <SettingsSection user={user} isGiemmale={isGiemmale} activeProfileId={activeProfile.id} />
+        )}
         {recipeToDelete && (
           <div className="delete-confirm-overlay" onClick={() => setRecipeToDelete(null)}>
             <div className="delete-confirm-banner" onClick={e => e.stopPropagation()}>
