@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, Sparkles, Home, ChevronDown, User as UserIcon, Check, X } from 'lucide-react';
 
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, limit } from 'firebase/firestore';
 import { parseISO } from 'date-fns';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -35,7 +35,10 @@ function App() {
 
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
-  const colPath = (name: string) => activeProfile.id === 'giemmale' ? name : `profiles/${activeProfile.id}/${name}`;
+  const colPath = useCallback((name: string) => 
+    activeProfile.id === 'giemmale' ? name : `profiles/${activeProfile.id}/${name}`,
+    [activeProfile.id]
+  );
 
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -133,121 +136,86 @@ function App() {
     return () => unsub();
   }, []);
 
+  // One-time triggers for profile change (Migration & Cleanup)
   useEffect(() => {
-    // LocalStorage automatic silent migration to Firebase
-    const savedShopping = localStorage.getItem('shoppingListData');
-    if (savedShopping) {
-      try {
-        const list = JSON.parse(savedShopping) as ShoppingItem[];
-        list.forEach(item => setDoc(doc(db, colPath('shoppingList'), item.id), item));
-        localStorage.removeItem('shoppingListData');
-      } catch (e) { }
-    }
-    const savedMeals = localStorage.getItem('mealPlannerData');
-    if (savedMeals) {
-      try {
-        const plans = JSON.parse(savedMeals) as MealPlan;
-        Object.keys(plans).forEach(dateKey => {
-          setDoc(doc(db, colPath('mealPlans'), dateKey), plans[dateKey]);
-        });
-        localStorage.removeItem('mealPlannerData');
-      } catch (e) { }
-    }
+    if (!user) return;
 
-    // Real-time Firestore Listeners
-    console.log("[FIREBASE] Inizializzando listeners per:", app?.options?.projectId);
-
-    const unsubscribeMeals = onSnapshot(
-      collection(db, colPath('mealPlans')),
-      (snapshot) => {
-        const newPlan: MealPlan = {};
-        snapshot.forEach(d => {
-          newPlan[d.id] = d.data() as { [mealId: string]: MealEntry[] };
-        });
-        setMealPlan(newPlan);
-      },
-      (error) => {
-        console.error("[FIREBASE MEALS ERROR]:", error);
+    const migrationAndCleanup = async () => {
+      // LocalStorage automatic silent migration to Firebase
+      const savedShopping = localStorage.getItem('shoppingListData');
+      if (savedShopping) {
+        try {
+          const list = JSON.parse(savedShopping) as ShoppingItem[];
+          for (const item of list) {
+            await setDoc(doc(db, colPath('shoppingList'), item.id), item);
+          }
+          localStorage.removeItem('shoppingListData');
+        } catch (e) { }
       }
-    );
-
-    const unsubscribeShopping = onSnapshot(
-      collection(db, colPath('shoppingList')),
-      (snapshot) => {
-        const list = snapshot.docs.map(d => d.data() as ShoppingItem);
-        setShoppingList(list);
-      },
-      (error) => {
-        console.error("[FIREBASE SHOPPING ERROR]:", error);
+      const savedMeals = localStorage.getItem('mealPlannerData');
+      if (savedMeals) {
+        try {
+          const plans = JSON.parse(savedMeals) as MealPlan;
+          for (const dateKey of Object.keys(plans)) {
+            await setDoc(doc(db, colPath('mealPlans'), dateKey), plans[dateKey]);
+          }
+          localStorage.removeItem('mealPlannerData');
+        } catch (e) { }
       }
-    );
 
-    const unsubscribeNotifications = onSnapshot(
-      collection(db, colPath('notifications')),
-      (snapshot) => {
-        const list = snapshot.docs
-          .map(d => ({ id: d.id, ...d.data() } as NotificationItem))
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, 10); // Keep only last 10
-        setNotifications(list);
-      },
-      (error) => {
-        console.error("[FIREBASE NOTIFICATIONS ERROR]:", error);
-      }
-    );
-
-    const unsubscribeProfilePhoto = onSnapshot(
-      doc(db, colPath('metadata'), 'profile'),
-      (docSnap) => {
-        if (docSnap.exists() && docSnap.data().avatarBase64) {
-          setProfileAvatar(docSnap.data().avatarBase64);
-        } else {
-          setProfileAvatar(null);
-        }
-      },
-      (error) => console.error("[FIREBASE AVATAR ERROR]:", error)
-    );
-
-    const unsubscribeRecipes = onSnapshot(
-      collection(db, colPath('recipes')),
-      (snapshot) => {
-        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe));
-        setRecipes(list);
-      },
-      (error) => {
-        console.error("[FIREBASE RECIPES ERROR]:", error);
-      }
-    );
-
-    const unsubscribeTags = onSnapshot(
-      collection(db, colPath('tags')),
-      (snapshot) => {
-        const list = snapshot.docs.map(d => d.data() as Tag);
-        setTags(list);
-      },
-      (error) => {
-        console.error("[FIREBASE TAGS ERROR]:", error);
-      }
-    );
-
-    const unsubscribeEvents = onSnapshot(
-      collection(db, colPath('events')),
-      (snapshot) => {
-        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent));
-        setEvents(list);
-      },
-      (error) => {
-        console.error("[FIREBASE EVENTS ERROR]:", error);
-      }
-    );
-
-    // One-time cleanup of stale test items
-    const checkStaleItems = async () => {
+      // One-time cleanup of stale test items
       const q = query(collection(db, colPath('shoppingList')), where("text", "==", "Test from backend Server"));
       const snap = await getDocs(q);
-      snap.forEach(async (d) => { await deleteDoc(d.ref); });
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref);
+      }
     };
-    checkStaleItems();
+
+    migrationAndCleanup();
+  }, [activeProfile.id, colPath]);
+
+  // Real-time Firestore Listeners
+  useEffect(() => {
+    if (!user) return;
+    console.log("[FIREBASE] Inizializzando listeners per:", app?.options?.projectId);
+
+    const unsubscribeMeals = onSnapshot(collection(db, colPath('mealPlans')), (snapshot) => {
+      const newPlan: MealPlan = {};
+      snapshot.forEach(d => { newPlan[d.id] = d.data() as { [mealId: string]: MealEntry[] }; });
+      setMealPlan(newPlan);
+    });
+
+    const unsubscribeShopping = onSnapshot(collection(db, colPath('shoppingList')), (snapshot) => {
+      const list = snapshot.docs.map(d => d.data() as ShoppingItem);
+      setShoppingList(list);
+    });
+
+    const unsubscribeNotifications = onSnapshot(query(collection(db, colPath('notifications')), limit(20)), (snapshot) => {
+      const list = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() } as NotificationItem))
+        .sort((a, b) => b.timestamp - a.timestamp);
+      setNotifications(list);
+    });
+
+    const unsubscribeProfilePhoto = onSnapshot(doc(db, colPath('metadata'), 'profile'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().avatarBase64) setProfileAvatar(docSnap.data().avatarBase64);
+      else setProfileAvatar(null);
+    });
+
+    const unsubscribeRecipes = onSnapshot(collection(db, colPath('recipes')), (snapshot) => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe));
+      setRecipes(list);
+    });
+
+    const unsubscribeTags = onSnapshot(collection(db, colPath('tags')), (snapshot) => {
+      const list = snapshot.docs.map(d => d.data() as Tag);
+      setTags(list);
+    });
+
+    const unsubscribeEvents = onSnapshot(collection(db, colPath('events')), (snapshot) => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent));
+      setEvents(list);
+    });
 
     return () => {
       unsubscribeMeals();
@@ -1014,6 +982,7 @@ function App() {
               cleaningLogs={cleaningLogs}
               taskSettings={taskSettings}
               events={events}
+              tags={tags}
               onAddEvent={handleAddEvent}
               onDeleteEvent={handleDeleteEvent}
               onNavigate={(tab) => setActiveTab(tab)}

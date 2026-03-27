@@ -17,7 +17,7 @@ import { format, startOfWeek, addDays, isSameDay, addWeeks } from 'date-fns';
 import { it } from 'date-fns/locale';
 import './HomeSection.css';
 import { MEALS, ROOMS } from '../constants';
-import type { MealPlan, ShoppingItem, Recipe, RoomTask, CleaningLog, TaskSettings, CalendarEvent } from '../types';
+import type { MealPlan, ShoppingItem, Recipe, RoomTask, CleaningLog, TaskSettings, CalendarEvent, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 
 interface HomeSectionProps {
@@ -29,6 +29,7 @@ interface HomeSectionProps {
   cleaningLogs: CleaningLog[];
   taskSettings: TaskSettings;
   events: CalendarEvent[];
+  tags: Tag[];
   onAddEvent: (event: Omit<CalendarEvent, 'id'>) => void;
   onDeleteEvent: (id: string) => void;
   onNavigate: (tab: 'planner' | 'shopping' | 'recipes' | 'cleaning') => void;
@@ -44,6 +45,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   cleaningLogs,
   taskSettings,
   events,
+  tags,
   onAddEvent,
   onDeleteEvent,
   onNavigate,
@@ -96,6 +98,11 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
     }
   };
 
+  const getTagColor = (label: string) => {
+    const tag = tags.find(t => t.label === label);
+    return tag ? tag.color : '#e2e8f0';
+  };
+
   const pendingShopping = shoppingList.filter(item => !item.checked).length;
 
   return (
@@ -119,15 +126,28 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               <div className="header-title-nav">
                 <h3 className="card-title">Calendario della Casa</h3>
                 <div className="calendar-nav-arrows">
-                  <button className="nav-arrow-btn" onClick={() => setOffsetWeeks(prev => prev - 1)}>
-                    <ChevronLeft size={20} />
-                  </button>
+                  <div className="nav-btn-group">
+                    <button className="nav-arrow-btn" onClick={() => setOffsetWeeks(prev => prev - 1)}>
+                      <ChevronLeft size={20} />
+                    </button>
+                    <button className="nav-arrow-btn" onClick={() => setOffsetWeeks(prev => prev + 1)}>
+                      <ChevronRight size={20} />
+                    </button>
+                  </div>
                   <span className="current-week-label">
-                    {format(weekDays[0], 'd MMM', { locale: it })} - {format(weekDays[6], 'd MMM', { locale: it })}
+                    {(() => {
+                      const start = weekDays[0];
+                      const end = weekDays[6];
+                      if (format(start, 'M') === format(end, 'M')) {
+                        return format(start, 'MMMM yyyy', { locale: it });
+                      } else {
+                        const startMonth = format(start, 'MMM', { locale: it });
+                        const endMonth = format(end, 'MMM', { locale: it });
+                        const year = format(end, 'yyyy');
+                        return `${startMonth} - ${endMonth} ${year}`;
+                      }
+                    })()}
                   </span>
-                  <button className="nav-arrow-btn" onClick={() => setOffsetWeeks(prev => prev + 1)}>
-                    <ChevronRight size={20} />
-                  </button>
                   {offsetWeeks !== 0 && (
                     <button className="nav-today-btn" onClick={() => setOffsetWeeks(0)}>Oggi</button>
                   )}
@@ -145,7 +165,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               const dateKey = format(day, 'yyyy-MM-dd');
               const dayEvents = events.filter(e => e.date === dateKey);
               const dayTasks = roomTasks.filter(t => getNextCleaningDate(t.taskName, t.roomId) === dateKey);
-              
+
               const isToday = isSameDay(day, new Date());
 
               return (
@@ -197,16 +217,31 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               {(() => {
                 const todayKey = format(new Date(), 'yyyy-MM-dd');
                 const todayMeals = mealPlan[todayKey] || {};
-                return MEALS.map(meal => (
-                  <div key={meal.id} className="meal-preview-item">
-                    <span className="meal-time">{meal.label}</span>
-                    <span className="meal-text">
-                      {todayMeals[meal.id]?.length > 0 
-                        ? (todayMeals[meal.id] as any[]).map(m => m.text).join(', ')
-                        : 'Non pianificato'}
-                    </span>
-                  </div>
-                ));
+                return MEALS.map(meal => {
+                  const entries = todayMeals[meal.id] || [];
+                  return (
+                    <div key={meal.id} className="meal-preview-row">
+                      <span className="meal-name-label">{meal.label}</span>
+                      <div className="meal-entries-stack">
+                        {entries.length > 0 ? (
+                          entries.map(entry => (
+                            <div key={entry.id} className="meal-entry-pill">
+                              <span
+                                className="assignee-tag-mini"
+                                style={{ backgroundColor: getTagColor(entry.assignee) }}
+                              >
+                                {entry.assignee}
+                              </span>
+                              <span className="meal-entry-name">{entry.text}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <span className="meal-entry-empty">Non pianificato</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
               })()}
             </div>
           </div>

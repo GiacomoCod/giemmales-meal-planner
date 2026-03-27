@@ -116,12 +116,17 @@
 .calendar-nav-arrows {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   background: #f8fafc;
   padding: 4px 10px;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   flex-shrink: 0;
+}
+
+.nav-btn-group {
+  display: flex;
+  gap: 2px;
 }
 
 .nav-arrow-btn {
@@ -146,8 +151,9 @@
   font-size: 0.85rem;
   font-weight: 700;
   color: #64748b;
-  width: 125px;
-  text-align: center;
+  min-width: 140px;
+  text-align: left;
+  text-transform: capitalize;
 }
 
 .nav-today-btn {
@@ -442,17 +448,70 @@
 .icon-vibrant-indigo { color: #6366f1; }
 .icon-muted { color: #cbd5e0; opacity: 0.5; }
 
-/* Existing Content Styles */
-.meal-preview-list { display: grid; gap: 12px; }
-.meal-preview-item {
+/* Today's Menu refinements */
+.meal-preview-list {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
+  flex-direction: column;
+}
+
+.meal-preview-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
-.meal-time { font-weight: 700; font-size: 0.85rem; color: #a0aec0; text-transform: uppercase; width: 80px; }
-.meal-text { font-weight: 600; color: #2d3748; flex: 1; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.meal-preview-row:last-child {
+  border-bottom: none;
+}
+
+.meal-name-label {
+  font-weight: 800;
+  font-size: 0.7rem;
+  color: #a0aec0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.meal-entries-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meal-entry-pill {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.assignee-tag-mini {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: white;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.meal-entry-name {
+  font-weight: 600;
+  color: #2d3748;
+  line-height: 1.3;
+  word-break: break-word;
+  font-size: 0.95rem;
+}
+
+.meal-entry-empty {
+  font-weight: 500;
+  color: #cbd5e0;
+  font-style: italic;
+  font-size: 0.85rem;
+}
 
 .action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
 .action-btn {
