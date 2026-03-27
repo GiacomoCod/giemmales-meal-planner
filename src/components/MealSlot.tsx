@@ -1,22 +1,24 @@
 import React, { useState } from 'react';
-import { Trash2 } from 'lucide-react';
-import type { MealEntry } from '../types';
+import { Trash2, Check, X } from 'lucide-react';
+import type { MealEntry, Tag } from '../types';
 
 export function MealSlot({
-  meal, entries, onAdd, onRemove, onUpdateAssignee, onUpdateText
+  meal, entries, onAdd, onRemove, onUpdateAssignee, onUpdateText, tags
 }: {
   meal: { id: string; label: string; Icon: any };
   entries: MealEntry[];
-  onAdd: (text: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => void;
+  onAdd: (text: string, assignee: string) => void;
   onRemove: (id: string) => void;
-  onUpdateAssignee: (id: string, newAssignee: 'Ale' | 'Giem' | 'Giemmale') => void;
+  onUpdateAssignee: (id: string, newAssignee: string) => void;
   onUpdateText: (id: string, newText: string) => void;
+  tags: Tag[];
 }) {
   const [text, setText] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [pendingText, setPendingText] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const Icon = meal.Icon;
 
   const handleAdd = (e: React.FormEvent) => {
@@ -28,16 +30,17 @@ export function MealSlot({
     }
   };
 
-  const confirmAdd = (assignee: 'Ale' | 'Giem' | 'Giemmale') => {
+  const confirmAdd = (assignee: string) => {
     onAdd(pendingText, assignee);
     setPendingText('');
     setShowAssigneePicker(false);
   };
 
-  const cycleAssignee = (current: 'Ale' | 'Giem' | 'Giemmale') => {
-    if (current === 'Giemmale') return 'Ale';
-    if (current === 'Ale') return 'Giem';
-    return 'Giemmale';
+  const cycleAssignee = (current: string) => {
+    if (tags.length === 0) return current;
+    const currentIndex = tags.findIndex(t => t.label === current);
+    const nextIndex = (currentIndex + 1) % tags.length;
+    return tags[nextIndex].label;
   };
 
   const startEditing = (entry: MealEntry) => {
@@ -52,6 +55,11 @@ export function MealSlot({
     setEditingId(null);
   };
 
+  const getTagColor = (label: string) => {
+    const tag = tags.find(t => t.label === label);
+    return tag ? tag.color : '#e2e8f0';
+  };
+
   return (
     <div className="meal-slot">
       <div className="meal-header">
@@ -64,7 +72,8 @@ export function MealSlot({
           <li key={entry.id} className="meal-entry">
             <button
               type="button"
-              className={`assignee-badge assignee-${entry.assignee.toLowerCase()}`}
+              className="assignee-badge"
+              style={{ backgroundColor: getTagColor(entry.assignee) }}
               onClick={() => onUpdateAssignee(entry.id, cycleAssignee(entry.assignee))}
               title="Cambia chi mangia questo pasto"
             >
@@ -93,9 +102,36 @@ export function MealSlot({
               </span>
             )}
 
-            <button className="del-entry-btn" type="button" onClick={() => onRemove(entry.id)}>
-              <Trash2 size={13} />
-            </button>
+            {showDeleteConfirm === entry.id ? (
+              <div className="delete-confirm-inline">
+                <button 
+                  className="confirm-btn-mini" 
+                  onClick={() => {
+                    onRemove(entry.id);
+                    setShowDeleteConfirm(null);
+                  }}
+                  title="Conferma eliminazione"
+                >
+                  <Check size={14} strokeWidth={3} />
+                </button>
+                <button 
+                  className="cancel-btn-mini" 
+                  onClick={() => setShowDeleteConfirm(null)}
+                  title="Annulla"
+                >
+                  <X size={14} strokeWidth={3} />
+                </button>
+              </div>
+            ) : (
+              <button 
+                className="del-entry-btn" 
+                type="button" 
+                onClick={() => setShowDeleteConfirm(entry.id)}
+                title="Elimina pasto"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -115,14 +151,15 @@ export function MealSlot({
         <div className="assignee-picker-overlay">
           <p className="picker-label">Chi mangia?</p>
           <div className="picker-buttons">
-            {(['Ale', 'Giem', 'Giemmale'] as const).map(person => (
+            {tags.map(tag => (
               <button
-                key={person}
+                key={tag.id}
                 type="button"
-                className={`picker-btn assignee-${person.toLowerCase()}`}
-                onClick={() => confirmAdd(person)}
+                className="picker-btn"
+                style={{ backgroundColor: tag.color }}
+                onClick={() => confirmAdd(tag.label)}
               >
-                {person}
+                {tag.label}
               </button>
             ))}
             <button
@@ -141,3 +178,4 @@ export function MealSlot({
     </div>
   );
 }
+

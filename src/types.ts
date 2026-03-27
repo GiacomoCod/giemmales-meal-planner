@@ -1,7 +1,13 @@
+export type Tag = {
+  id: string;
+  label: string;
+  color: string;
+};
+
 export type MealEntry = {
   id: string;
   text: string;
-  assignee: 'Ale' | 'Giem' | 'Giemmale';
+  assignee: string;
 };
 
 export type MealPlan = {
@@ -55,3 +61,12 @@ export interface NotificationItem {
   timestamp: number;
   read: boolean;
 }
+
+export type CalendarEvent = {
+  id: string;
+  text: string;
+  date: string; // yyyy-MM-dd
+  startTime?: string;
+  endTime?: string;
+  color?: string;
+};

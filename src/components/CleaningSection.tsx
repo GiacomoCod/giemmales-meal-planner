@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Sparkles, ChevronRight as ChevronRightIcon, Plus, Check, X, Calendar as CalendarIcon, RefreshCw, Trash2, Minus } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, parseISO } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ROOMS } from '../constants';
 import type { RoomTask, CleaningLog, TaskSettings, TaskUnit } from '../types';
+import { InfoTooltip } from './InfoTooltip';
 
 interface CleaningSectionProps {
   currentMonth: Date;
@@ -49,6 +50,7 @@ export function CleaningSection({
   handleCompleteTask, taskSettings, showTaskSettings, setShowTaskSettings, editingFrequency, setEditingFrequency,
   handleUpdateTaskFrequency
 }: CleaningSectionProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
   const getTaskUrgency = (logDate: string, taskType: string) => {
     if (!logDate) return { progress: 0, color: '#48bb78', daysRemaining: null };
@@ -124,9 +126,10 @@ export function CleaningSection({
       <main className="main-content">
         {!selectedRoom ? (
           <>
-            <div className="cleaning-header-row">
+            <div className="cleaning-header-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Sparkles className="cleaning-icon" size={26} strokeWidth={2.5} />
               <h2 className="cleaning-title-main">Organizzazione Pulizie</h2>
+              <InfoTooltip text="Tieni traccia della pulizia della casa. Le barre colorate indicano l'urgenza: dal verde (pulito) al rosso (necessario). Clicca su una stanza per gestire i compiti specifici." position="right" />
             </div>
 
             <div className="rooms-grid">
@@ -246,9 +249,31 @@ export function CleaningSection({
                             >
                               <RefreshCw size={14} />
                             </button>
-                            <button className="task-action-btn task-action-delete" title="Elimina mansione" onClick={() => handleDeleteRoomTask(task.id)}>
-                              <Trash2 size={14} />
-                            </button>
+                            {showDeleteConfirm === task.id ? (
+                              <div className="delete-confirm-inline">
+                                <button 
+                                  className="confirm-btn-mini" 
+                                  onClick={() => {
+                                    handleDeleteRoomTask(task.id);
+                                    setShowDeleteConfirm(null);
+                                  }}
+                                  title="Conferma eliminazione"
+                                >
+                                  <Check size={14} strokeWidth={3} />
+                                </button>
+                                <button 
+                                  className="cancel-btn-mini" 
+                                  onClick={() => setShowDeleteConfirm(null)}
+                                  title="Annulla"
+                                >
+                                  <X size={14} strokeWidth={3} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button className="task-action-btn task-action-delete" title="Elimina mansione" onClick={() => setShowDeleteConfirm(task.id)}>
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </div>
 

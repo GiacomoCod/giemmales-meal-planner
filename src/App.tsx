@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, AlertTriangle, Sparkles, Home, ChevronDown, User as UserIcon } from 'lucide-react';
+import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, Sparkles, Home, ChevronDown, User as UserIcon, Check, X } from 'lucide-react';
 
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -11,12 +11,13 @@ import { db, app, auth } from './firebase';
 import './App.css';
 
 import { SUGGESTIONS, DEFAULT_ROOM_TASKS, DUMMY_RECIPES } from './constants';
-import type { MealEntry, MealPlan, Recipe, CleaningLog, RoomTask, TaskUnit, TaskSettings, ShoppingItem, NotificationItem } from './types';
+import type { MealEntry, MealPlan, Recipe, CleaningLog, RoomTask, TaskUnit, TaskSettings, ShoppingItem, NotificationItem, Tag, CalendarEvent } from './types';
 import { PlannerSection } from './components/PlannerSection';
 import { ShoppingListSection } from './components/ShoppingListSection';
 import { RecipesSection } from './components/RecipesSection';
 import { CleaningSection } from './components/CleaningSection';
 import { SettingsSection } from './components/SettingsSection';
+import { HomeSection } from './components/HomeSection';
 import { Login } from './components/Login';
 
 function App() {
@@ -47,12 +48,11 @@ function App() {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeTab, setActiveTab] = useState<'planner' | 'shopping' | 'recipes' | 'cleaning' | 'settings'>('planner');
+  const [activeTab, setActiveTab] = useState<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'settings'>('home');
   const [recipes, setRecipes] = useState<Recipe[]>(DUMMY_RECIPES);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [isEditingRecipe, setIsEditingRecipe] = useState(false);
   const [tempRecipe, setTempRecipe] = useState<Recipe | null>(null); // For editing
-  const [recipeToDelete, setRecipeToDelete] = useState<Recipe | null>(null);
   const [cleaningNotes, setCleaningNotes] = useState<string>('');
   const [isSavingCleaningNotes, setIsSavingCleaningNotes] = useState(false);
   const [cleaningLogs, setCleaningLogs] = useState<CleaningLog[]>([]);
@@ -66,7 +66,45 @@ function App() {
   const [datePickerTaskId, setDatePickerTaskId] = useState<string | null>(null);
   const [customDate, setCustomDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [editingFrequency, setEditingFrequency] = useState<{value: number, unit: TaskUnit}>({value: 1, unit: 'settimane'});
+  const [showNotifDeleteConfirm, setShowNotifDeleteConfirm] = useState<string | null>(null);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const hasSeededRef = useRef<Set<string>>(new Set());
+  
+  // Refs for closing dropdowns when clicking outside
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const notifDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setShowProfileDropdown(false);
+      }
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+        setShowDeleteAllConfirm(false); // Reset confirmation state
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleDeleteAllNotifications = async () => {
+    try {
+      const q = query(collection(db, colPath('notifications')));
+      const snapshot = await getDocs(q);
+      const batch: any[] = [];
+      snapshot.forEach(doc => {
+        batch.push(deleteDoc(doc.ref));
+      });
+      await Promise.all(batch);
+    } catch (e) {
+      console.error("Error deleting all notifications:", e);
+    }
+  };
 
   useEffect(() => {
     setMealPlan({});
@@ -78,6 +116,8 @@ function App() {
     setCleaningLogs([]);
     setRoomTasks([]);
     setTaskSettings({});
+    setTags([]);
+    setEvents([]);
   }, [activeProfile.id]);
 
   const filteredSuggestions = SUGGESTIONS.filter(item =>
@@ -179,6 +219,28 @@ function App() {
       }
     );
 
+    const unsubscribeTags = onSnapshot(
+      collection(db, colPath('tags')),
+      (snapshot) => {
+        const list = snapshot.docs.map(d => d.data() as Tag);
+        setTags(list);
+      },
+      (error) => {
+        console.error("[FIREBASE TAGS ERROR]:", error);
+      }
+    );
+
+    const unsubscribeEvents = onSnapshot(
+      collection(db, colPath('events')),
+      (snapshot) => {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent));
+        setEvents(list);
+      },
+      (error) => {
+        console.error("[FIREBASE EVENTS ERROR]:", error);
+      }
+    );
+
     // One-time cleanup of stale test items
     const checkStaleItems = async () => {
       const q = query(collection(db, colPath('shoppingList')), where("text", "==", "Test from backend Server"));
@@ -193,8 +255,10 @@ function App() {
       unsubscribeNotifications();
       unsubscribeRecipes();
       unsubscribeProfilePhoto();
+      unsubscribeTags();
+      unsubscribeEvents();
     };
-  }, [activeProfile.id]);
+  }, [activeProfile.id, colPath]);
 
   // Sync notes for the selected week
   useEffect(() => {
@@ -290,6 +354,8 @@ function App() {
       // double-invocation finds the set already populated and bails out.
       if (hasSeededRef.current.has(activeProfile.id)) return;
       hasSeededRef.current.add(activeProfile.id);
+      
+      // Seed Room Tasks
       for (const roomId of Object.keys(DEFAULT_ROOM_TASKS)) {
         hasSeededRef.current.add(roomId);
       }
@@ -304,10 +370,33 @@ function App() {
           }
         }
       }
+
+      // Seed Default Tags
+      const tagsSnap = await getDocs(collection(db, colPath('tags')));
+      if (tagsSnap.empty) {
+        if (isGiemmale) {
+          const defaultTags: Tag[] = [
+            { id: 'ale', label: 'Ale', color: '#ffecf1' },
+            { id: 'giem', label: 'Giem', color: '#e3f2fd' },
+            { id: 'giemmale', label: 'Giemmale', color: '#f3e5f5' }
+          ];
+          for (const tag of defaultTags) {
+            await setDoc(doc(db, colPath('tags'), tag.id), tag);
+          }
+        } else {
+          const name = activeProfile.name.split(' ')[0];
+          const defaultTag: Tag = { 
+            id: name.toLowerCase(), 
+            label: name, 
+            color: '#e3f2fd' 
+          };
+          await setDoc(doc(db, colPath('tags'), defaultTag.id), defaultTag);
+        }
+      }
     };
 
     seedDefaults();
-  }, [activeProfile.id]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeProfile.id, isGiemmale, activeProfile.name]);
 
   const handleUpdateNotes = async (content: string) => {
     setWeekNotes(content);
@@ -368,10 +457,24 @@ function App() {
 
   const deleteItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try { await deleteDoc(doc(db, colPath('shoppingList'), id)); } catch (e: any) { console.error(e); }
+    const item = shoppingList.find(i => i.id === id);
+    if (!item) return;
+
+    try {
+      await deleteDoc(doc(db, colPath('shoppingList'), id));
+      
+      const notifId = generateId();
+      await setDoc(doc(db, colPath('notifications'), notifId), {
+        text: `"${item.text}" rimosso dalla spesa`,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e: any) {
+      console.error(e);
+    }
   };
 
-  const handleAddMealEntry = async (dateKey: string, mealId: string, text: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => {
+  const handleAddMealEntry = async (dateKey: string, mealId: string, text: string, assignee: string) => {
     const newEntry: MealEntry = { id: generateId(), text, assignee };
     const dayData = mealPlan[dateKey] || {};
 
@@ -423,7 +526,7 @@ function App() {
     }
   };
 
-  const handleUpdateAssignee = async (dateKey: string, mealId: string, entryId: string, assignee: 'Ale' | 'Giem' | 'Giemmale') => {
+  const handleUpdateAssignee = async (dateKey: string, mealId: string, entryId: string, assignee: string) => {
     const dayData = mealPlan[dateKey] || {};
     const mealData = (dayData[mealId] || []) as MealEntry[];
 
@@ -534,39 +637,26 @@ function App() {
     setIsEditingRecipe(true);
   };
 
-  const handleDeleteRecipe = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
+  const handleDeleteRecipe = async (id: string) => {
     const recipe = recipes.find(r => r.id === id);
-    if (recipe) {
-      setRecipeToDelete(recipe);
-    }
-  };
-
-  const confirmDeleteRecipe = async () => {
-    if (recipeToDelete) {
-      const deletedTitle = recipeToDelete.title;
-      const deletedId = recipeToDelete.id;
-      
-      try {
-        // Delete from Firestore
-        await deleteDoc(doc(db, colPath('recipes'), deletedId));
-        
-        if (selectedRecipe?.id === deletedId) {
-          setSelectedRecipe(null);
-        }
-        
-        // Add Notification
-        const notifId = generateId();
-        await setDoc(doc(db, colPath('notifications'), notifId), {
-          text: `Ricetta "${deletedTitle}" eliminata`,
-          timestamp: Date.now(),
-          read: false
-        });
-      } catch (e) {
-        console.error("Error deleting recipe:", e);
+    if (!recipe) return;
+    
+    const deletedTitle = recipe.title;
+    
+    try {
+      await deleteDoc(doc(db, colPath('recipes'), id));
+      if (selectedRecipe?.id === id) {
+        setSelectedRecipe(null);
       }
-
-      setRecipeToDelete(null);
+      
+      const notifId = generateId();
+      await setDoc(doc(db, colPath('notifications'), notifId), {
+        text: `Ricetta "${deletedTitle}" eliminata`,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e) {
+      console.error("Error deleting recipe:", e);
     }
   };
   const handleCompleteTask = async (roomId: string, taskName: string, dateStr?: string) => {
@@ -606,8 +696,18 @@ function App() {
   };
 
   const handleDeleteRoomTask = async (taskId: string) => {
+    const task = roomTasks.find(t => t.id === taskId);
+    if (!task) return;
+
     try {
       await deleteDoc(doc(db, colPath('roomTasks'), taskId));
+      
+      const notifId = generateId();
+      await setDoc(doc(db, colPath('notifications'), notifId), {
+        text: `Mansione "${task.taskName}" eliminata`,
+        timestamp: Date.now(),
+        read: false
+      });
     } catch (e) {
       console.error("Error deleting room task:", e);
     }
@@ -633,6 +733,64 @@ function App() {
     }
   };
 
+  const handleAddTag = async (tag: Tag) => {
+    try {
+      await setDoc(doc(db, colPath('tags'), tag.id), tag);
+      
+      const notifId = generateId();
+      await setDoc(doc(db, colPath('notifications'), notifId), {
+        text: `Nuova targhetta "${tag.label}" aggiunta 🏷️`,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e) {
+      console.error("Error adding tag:", e);
+    }
+  };
+
+  const handleDeleteTag = async (tagId: string) => {
+    const tag = tags.find(t => t.id === tagId);
+    if (!tag) return;
+    const label = tag.label;
+
+    try {
+      await deleteDoc(doc(db, colPath('tags'), tagId));
+      
+      const notifId = generateId();
+      await setDoc(doc(db, colPath('notifications'), notifId), {
+        text: `Targhetta "${label}" rimossa 🗑️`,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e) {
+      console.error("Error deleting tag:", e);
+    }
+  };
+
+  const handleAddEvent = async (event: Omit<CalendarEvent, 'id'>) => {
+    try {
+      const id = generateId();
+      await setDoc(doc(db, colPath('events'), id), { ...event, id });
+      
+      const notifId = generateId();
+      await setDoc(doc(db, colPath('notifications'), notifId), {
+        text: `Nuovo evento: "${event.text}" 📅`,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e) {
+      console.error("Error adding event:", e);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    try {
+      await deleteDoc(doc(db, colPath('events'), eventId));
+    } catch (e) {
+      console.error("Error deleting event:", e);
+    }
+  };
+
   if (isAuthLoading) return <div style={{display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center'}}>Caricamento...</div>;
   if (!user) return <Login />;
 
@@ -641,24 +799,31 @@ function App() {
       <nav className="top-nav">
         <div className="nav-container">
           <div className="nav-brand">
-            <div className="profile-selector">
-              <h1 
-                className="nav-title" 
-                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-              >
-                <div className="nav-icon-wrapper">
-                  <Home size={28} strokeWidth={2.5} className="nav-icon-main" />
-                  <img 
-                    src={profileAvatar || 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=200&h=200'} 
-                    alt="Av" 
-                    className="nav-icon-hover" 
-                  />
+            <div className="profile-selector" ref={profileDropdownRef}>
+              <h1 className="nav-title">
+                <div 
+                  className="nav-clickable-title"
+                  onClick={() => setActiveTab('home')}
+                >
+                  <div className="nav-icon-wrapper">
+                    <Home size={28} strokeWidth={2.5} className="nav-icon-main" />
+                    <img 
+                      src={profileAvatar || 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=200&h=200'} 
+                      alt="Av" 
+                      className="nav-icon-hover" 
+                    />
+                  </div>
+                  <div className="nav-title-text-wrapper">
+                    <span className="nav-title-main">HOME PLANNER</span>
+                    <span className="nav-title-hover">{activeProfile.name.toUpperCase()}</span>
+                  </div>
                 </div>
-                <div className="nav-title-text-wrapper">
-                  <span className="nav-title-main">HOME PLANNER</span>
-                  <span className="nav-title-hover">{activeProfile.name.toUpperCase()}</span>
+                <div 
+                  className={`profile-arrow-wrapper ${showProfileDropdown ? 'open' : ''}`}
+                  onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                >
+                  <ChevronDown size={24} className="profile-arrow" />
                 </div>
-                <ChevronDown size={24} className={`profile-arrow ${showProfileDropdown ? 'open' : ''}`} />
               </h1>
               {showProfileDropdown && (
                 <div className="profile-dropdown">
@@ -720,42 +885,113 @@ function App() {
           </div>
 
           <div className="nav-spacer">
-            <div className="notif-wrapper">
-              <button
-                className={`notif-btn ${notifications.some(n => !n.read) ? 'has-unread' : ''}`}
-                onClick={() => setShowNotifications(!showNotifications)}
-              >
-                <Bell size={22} strokeWidth={2.5} />
-                {notifications.some(n => !n.read) && <span className="notif-badge" />}
-              </button>
+              <div className="notif-wrapper" ref={notifDropdownRef}>
+                <button
+                  className={`notif-btn ${notifications.some(n => !n.read) ? 'has-unread' : ''}`}
+                  onClick={() => setShowNotifications(!showNotifications)}
+                >
+                  <Bell size={22} strokeWidth={2.5} />
+                  {notifications.some(n => !n.read) && <span className="notif-badge" />}
+                </button>
 
-              {showNotifications && (
-                <div className="notif-dropdown">
-                  <div className="notif-header">
-                    <h4>Notifiche</h4>
-                    <button onClick={async () => {
-                      for (const n of notifications) {
-                        if (!n.read) await setDoc(doc(db, colPath('notifications'), n.id), { ...n, read: true });
-                      }
-                    }}>Segna come lette</button>
-                  </div>
+                {showNotifications && (
+                  <div className="notif-dropdown">
+                    <div className="notif-header">
+                      <div className="notif-header-title-row">
+                        <h4>Notifiche</h4>
+                        <button className="notif-mark-read" onClick={async () => {
+                          for (const n of notifications) {
+                            if (!n.read) await setDoc(doc(db, colPath('notifications'), n.id), { ...n, read: true });
+                          }
+                        }}>Segna lette</button>
+                      </div>
+                      
+                      <div className="notif-actions-header">
+                        {showDeleteAllConfirm ? (
+                          <div className="delete-confirm-inline header-confirm">
+                            <span className="confirm-text">Eliminare tutte?</span>
+                            <button 
+                              className="confirm-btn-mini" 
+                              onClick={() => {
+                                handleDeleteAllNotifications();
+                                setShowDeleteAllConfirm(false);
+                              }}
+                            >
+                              <Check size={14} strokeWidth={2.5} />
+                            </button>
+                            <button 
+                              className="cancel-btn-mini" 
+                              onClick={() => setShowDeleteAllConfirm(false)}
+                            >
+                              <X size={14} strokeWidth={2.5} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            className="notif-delete-all" 
+                            onClick={() => setShowDeleteAllConfirm(true)}
+                            disabled={notifications.length === 0}
+                          >
+                            <Trash2 size={12} style={{marginRight: '4px'}} />
+                            Elimina tutte
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   <div className="notif-list">
                     {notifications.length === 0 ? (
                       <p className="notif-empty">Nessuna nuova notifica</p>
                     ) : (
                       notifications.map((n: NotificationItem) => (
-                        <div key={n.id} className={`notif-item ${!n.read ? 'unread' : ''}`}>
+                        <div 
+                          key={n.id} 
+                          className={`notif-item ${!n.read ? 'unread' : ''}`}
+                          onClick={async () => {
+                            if (!n.read) {
+                              await setDoc(doc(db, colPath('notifications'), n.id), { ...n, read: true });
+                            }
+                          }}
+                        >
                           <div className="notif-content">
                             <p className="notif-text">{n.text}</p>
                             <span className="notif-time">{format(n.timestamp, 'HH:mm')}</span>
                           </div>
-                          <button
-                            className="notif-delete-btn"
-                            onClick={(e) => handleDeleteNotification(n.id, e)}
-                            title="Elimina notifica"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          
+                          {showNotifDeleteConfirm === n.id ? (
+                            <div className="delete-confirm-inline notif-delete-confirm active-confirm">
+                              <button 
+                                className="confirm-btn-mini" 
+                                onClick={(e) => {
+                                  handleDeleteNotification(n.id, e);
+                                  setShowNotifDeleteConfirm(null);
+                                }}
+                                title="Conferma eliminazione"
+                              >
+                                <Check size={12} strokeWidth={3} />
+                              </button>
+                              <button 
+                                className="cancel-btn-mini" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowNotifDeleteConfirm(null);
+                                }}
+                                title="Annulla"
+                              >
+                                <X size={12} strokeWidth={3} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              className="notif-delete-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowNotifDeleteConfirm(n.id);
+                              }}
+                              title="Elimina notifica"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       ))
                     )}
@@ -768,7 +1004,38 @@ function App() {
       </nav>
 
       <div className="layout">
-        {activeTab === 'planner' && (
+          {activeTab === 'home' && (
+            <HomeSection
+              userName={activeProfile.name}
+              mealPlan={mealPlan}
+              shoppingList={shoppingList}
+              recipes={recipes}
+              roomTasks={roomTasks}
+              cleaningLogs={cleaningLogs}
+              taskSettings={taskSettings}
+              events={events}
+              onAddEvent={handleAddEvent}
+              onDeleteEvent={handleDeleteEvent}
+              onNavigate={(tab) => setActiveTab(tab)}
+              onQuickAction={(action) => {
+                if (action === 'add-shopping') setActiveTab('shopping');
+                if (action === 'add-recipe') {
+                  setActiveTab('recipes');
+                  handleAddNewRecipe();
+                }
+                if (action === 'add-task') {
+                  setActiveTab('cleaning');
+                }
+                if (action.startsWith('go-to-room:')) {
+                  const roomId = action.split(':')[1];
+                  setSelectedRoom(roomId);
+                  setActiveTab('cleaning');
+                }
+              }}
+            />
+          )}
+
+          {activeTab === 'planner' && (
           <PlannerSection
             currentMonth={currentMonth}
             prevMonth={prevMonth}
@@ -788,6 +1055,9 @@ function App() {
             handleRemoveMealEntry={handleRemoveMealEntry}
             handleUpdateAssignee={handleUpdateAssignee}
             handleUpdateMealEntryText={handleUpdateMealEntryText}
+            tags={tags}
+            onAddTag={handleAddTag}
+            onDeleteTag={handleDeleteTag}
           />
         )}
         {activeTab === 'shopping' && (
@@ -859,25 +1129,6 @@ function App() {
         )}
         {activeTab === 'settings' && (
           <SettingsSection user={user} isGiemmale={isGiemmale} activeProfileId={activeProfile.id} />
-        )}
-        {recipeToDelete && (
-          <div className="delete-confirm-overlay" onClick={() => setRecipeToDelete(null)}>
-            <div className="delete-confirm-banner" onClick={e => e.stopPropagation()}>
-              <div className="delete-banner-content">
-                <div className="delete-banner-icon">
-                  <AlertTriangle size={32} color="#e53e3e" strokeWidth={2.5} />
-                </div>
-                <div className="delete-banner-text">
-                  <h3>Sei sicuro di voler eliminare "{recipeToDelete.title}"?</h3>
-                  <p>Questa azione non può essere annullata.</p>
-                </div>
-              </div>
-              <div className="delete-banner-actions">
-                <button className="banner-cancel-btn" onClick={() => setRecipeToDelete(null)}>Annulla</button>
-                <button className="banner-confirm-btn" onClick={confirmDeleteRecipe}>Sì, Elimina</button>
-              </div>
-            </div>
-          </div>
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
-import React from 'react';
-import { BookOpen, Plus, Trash2, X, Pencil, ShoppingCart } from 'lucide-react';
+import React, { useState } from 'react';
+import { BookOpen, Plus, Trash2, X, Pencil, ShoppingCart, Check } from 'lucide-react';
 import type { Recipe } from '../types';
+import { InfoTooltip } from './InfoTooltip';
 
 interface RecipesSectionProps {
   recipes: Recipe[];
@@ -31,12 +32,15 @@ export function RecipesSection({
   handleImageUpload,
   handleSaveRecipe
 }: RecipesSectionProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showModalDeleteConfirm, setShowModalDeleteConfirm] = useState(false);
   return (
     <main className="main-content recipes-only">
       <section className="recipes-section">
-        <div className="recipes-header-row">
+        <div className="recipes-header-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <BookOpen className="recipes-icon" size={26} strokeWidth={2.5} />
           <h2 className="recipes-title-main">Le mie ricette</h2>
+          <InfoTooltip text="Il tuo ricettario personale. Crea nuove ricette cliccando il tasto '+' in fondo alla lista. Puoi aggiungere ingredienti, passaggi e una foto per ogni piatto." position="right" />
         </div>
 
         <div className="recipes-grid">
@@ -51,13 +55,42 @@ export function RecipesSection({
               <div className="recipe-info">
                 <div className="recipe-info-header">
                   <h3 className="recipe-title">{recipe.title}</h3>
-                  <button
-                    className="recipe-card-delete"
-                    onClick={(e) => handleDeleteRecipe(recipe.id, e)}
-                    title="Elimina ricetta"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {showDeleteConfirm === recipe.id ? (
+                    <div className="delete-confirm-inline" onClick={e => e.stopPropagation()}>
+                      <button
+                        className="confirm-btn-mini"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteRecipe(recipe.id);
+                          setShowDeleteConfirm(null);
+                        }}
+                        title="Conferma eliminazione"
+                      >
+                        <Check size={14} strokeWidth={3} />
+                      </button>
+                      <button
+                        className="cancel-btn-mini"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDeleteConfirm(null);
+                        }}
+                        title="Annulla"
+                      >
+                        <X size={14} strokeWidth={3} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="recipe-card-delete"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDeleteConfirm(recipe.id);
+                      }}
+                      title="Elimina ricetta"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
                 <p className="recipe-description">{recipe.description}</p>
               </div>
@@ -151,14 +184,36 @@ export function RecipesSection({
                   <>
                     <div className="modal-title-row">
                       <h2 className="modal-title">{selectedRecipe.title}</h2>
-                      <button
-                        className="modal-delete-btn"
-                        onClick={() => handleDeleteRecipe(selectedRecipe.id)}
-                        title="Elimina ricetta"
-                      >
-                        <Trash2 size={20} />
-                        <span>Elimina</span>
-                      </button>
+                      {showModalDeleteConfirm ? (
+                        <div className="delete-confirm-inline modal-delete-confirm">
+                          <span className="confirm-text">Sicuro?</span>
+                          <button 
+                            className="confirm-btn-mini" 
+                            onClick={() => {
+                              handleDeleteRecipe(selectedRecipe.id);
+                              setSelectedRecipe(null);
+                              setShowModalDeleteConfirm(false);
+                            }}
+                          >
+                            <Check size={18} strokeWidth={2.5} />
+                          </button>
+                          <button 
+                            className="cancel-btn-mini" 
+                            onClick={() => setShowModalDeleteConfirm(false)}
+                          >
+                            <X size={18} strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className="modal-delete-btn"
+                          onClick={() => setShowModalDeleteConfirm(true)}
+                          title="Elimina ricetta"
+                        >
+                          <Trash2 size={20} />
+                          <span>Elimina</span>
+                        </button>
+                      )}
                     </div>
                     <p className="modal-description">{selectedRecipe.description}</p>
 

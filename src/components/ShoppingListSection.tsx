@@ -1,6 +1,7 @@
-import React from 'react';
-import { ShoppingCart, Plus, Check, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShoppingCart, Plus, Check, Trash2, X } from 'lucide-react';
 import type { ShoppingItem } from '../types';
+import { InfoTooltip } from './InfoTooltip';
 
 interface ShoppingListSectionProps {
   shoppingList: ShoppingItem[];
@@ -27,13 +28,17 @@ export function ShoppingListSection({
   toggleItem,
   deleteItem
 }: ShoppingListSectionProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   return (
     <main className="main-content shopping-only">
       <section className="shopping-section">
         <div className="shopping-card">
           <div className="shopping-header">
-            <ShoppingCart className="shopping-icon" size={26} strokeWidth={2.5} />
-            <h2>Lista della Spesa</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <ShoppingCart className="shopping-icon" size={26} strokeWidth={2.5} />
+              <h2>Lista della Spesa</h2>
+              <InfoTooltip text="La tua lista della spesa intelligente. Clicca sui suggerimenti rapidi per aggiungere elementi comuni o scrivi nel campo in basso." position="right" />
+            </div>
           </div>
 
           <form className="shopping-form" onSubmit={handleAddItem}>
@@ -79,13 +84,41 @@ export function ShoppingListSection({
                   {item.checked && <Check size={14} strokeWidth={3.5} />}
                 </div>
                 <span className="item-text">{item.text}</span>
-                <button
-                  className="delete-btn"
-                  onClick={(e) => deleteItem(item.id, e)}
-                  title="Rimuovi"
-                >
-                  <Trash2 size={18} />
-                </button>
+                {showDeleteConfirm === item.id ? (
+                  <div className="delete-confirm-inline" onClick={e => e.stopPropagation()}>
+                    <button 
+                      className="confirm-btn-mini" 
+                      onClick={(e) => {
+                        deleteItem(item.id, e);
+                        setShowDeleteConfirm(null);
+                      }}
+                      title="Conferma eliminazione"
+                    >
+                      <Check size={14} strokeWidth={3} />
+                    </button>
+                    <button 
+                      className="cancel-btn-mini" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDeleteConfirm(null);
+                      }}
+                      title="Annulla"
+                    >
+                      <X size={14} strokeWidth={3} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="delete-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm(item.id);
+                    }}
+                    title="Rimuovi"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
