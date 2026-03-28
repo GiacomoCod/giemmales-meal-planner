@@ -90,6 +90,12 @@
   overflow: hidden;
 }
 
+.calendar-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+}
+
 .card-header-with-action {
   display: flex;
   justify-content: space-between;
@@ -213,6 +219,15 @@
   border: 1px solid transparent;
   min-height: 280px;
   min-width: 150px;
+}
+
+/* Scrollable calendar on mobile */
+.calendar-scroll-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+  margin: 0 -8px;
+  padding: 0 8px 8px;
 }
 
 .calendar-day-col.is-today {
@@ -551,7 +566,7 @@
 .card-arrow { position: absolute; right: 20px; bottom: 20px; color: #cbd5e0; }
 
 .highlight-blue { border-left: 6px solid #4299e1; }
-.recipe-card { border-left: 6px solid #9f7aea; }
+.home-recipe-card { border-left: 6px solid #9f7aea; }
 .recipe-suggestion { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
 .recipe-img-mini { width: 60px; height: 60px; border-radius: 14px; background-size: cover; background-position: center; }
 .recipe-info { display: flex; flex-direction: column; }
@@ -570,6 +585,115 @@
 @media (max-width: 768px) {
   .welcome-name { font-size: 2rem; }
   .home-grid { grid-template-columns: 1fr; }
-  .house-calendar-grid { grid-template-columns: repeat(2, 1fr); }
   .action-buttons { grid-template-columns: 1fr; }
+
+  /* Calendar header: stack vertically, button full width */
+  .card-header-with-action {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .add-event-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .header-title-nav {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* On mobile: horizontal scroll with fixed narrow columns */
+  .house-calendar-grid {
+    grid-template-columns: repeat(7, 120px);
+    gap: 8px;
+  }
+  .calendar-day-col {
+    min-height: 200px;
+    min-width: unset;
+    padding: 12px 8px;
+  }
+  .house-calendar-card {
+    padding: 20px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-container {
+    padding: 16px 12px;
+  }
+  .home-header {
+    margin-bottom: 20px;
+    padding: 0 4px;
+  }
+  .welcome-label { font-size: 0.95rem; }
+  .welcome-name { font-size: 1.7rem; letter-spacing: -0.5px; }
+  .home-grid { gap: 14px; }
+
+  .house-calendar-card {
+    padding: 16px 12px;
+  }
+  .card-header-with-action {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .header-left {
+    width: 100%;
+  }
+  .header-title-nav {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .card-title {
+    font-size: 1.1rem;
+  }
+  .calendar-nav-arrows {
+    padding: 4px 8px;
+    gap: 8px;
+  }
+  .current-week-label {
+    font-size: 0.78rem;
+    min-width: unset;
+  }
+  /* "Nuovo Evento" button: compact on mobile */
+  .add-event-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 16px;
+  }
+  /* Horizontal scroll for calendar */
+  .house-calendar-grid {
+    grid-template-columns: repeat(7, 100px);
+    gap: 6px;
+  }
+  .calendar-day-col {
+    min-height: 180px;
+    padding: 10px 6px;
+    border-radius: 14px;
+  }
+  .day-name { font-size: 0.68rem; }
+  .day-number { font-size: 0.95rem; width: 30px; height: 30px; border-radius: 10px; }
+  .day-header { margin-bottom: 10px; }
+  .calendar-event-item {
+    padding: 6px 8px;
+    font-size: 0.75rem;
+    border-radius: 10px;
+  }
+  .event-text { font-size: 0.75rem; }
+  .event-time { font-size: 0.62rem; }
+  .calendar-task-item { font-size: 0.68rem; padding: 6px 7px; }
+
+  /* Home card general mobile tweaks */
+  .home-card {
+    border-radius: 20px;
+    padding: 18px;
+  }
+  .action-buttons { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .action-btn { padding: 12px 8px; }
+
+  /* Form modal on tiny screens */
+  .form-row {
+    grid-template-columns: 1fr;
+  }
 }

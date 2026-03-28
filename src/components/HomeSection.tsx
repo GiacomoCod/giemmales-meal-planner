@@ -11,7 +11,10 @@ import {
   ChevronRight,
   ChevronLeft,
   X,
-  Clock
+  Clock,
+  Store,
+  Home as HomeIcon,
+  Pill
 } from 'lucide-react';
 import { format, startOfWeek, addDays, isSameDay, addWeeks } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -104,6 +107,9 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   };
 
   const pendingShopping = shoppingList.filter(item => !item.checked).length;
+  const pendingFood = shoppingList.filter(item => !item.checked && (item.category === 'supermarket' || !item.category)).length;
+  const pendingHome = shoppingList.filter(item => !item.checked && item.category === 'home').length;
+  const pendingMed = shoppingList.filter(item => !item.checked && item.category === 'medicine').length;
 
   return (
     <div className="home-container">
@@ -160,6 +166,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             </button>
           </div>
 
+          <div className="calendar-scroll-wrapper">
           <div className="house-calendar-grid">
             {weekDays.map(day => {
               const dateKey = format(day, 'yyyy-MM-dd');
@@ -203,6 +210,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 </div>
               );
             })}
+          </div>
           </div>
         </section>
 
@@ -279,19 +287,42 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         </div>
 
         {/* Shopping Status */}
-        <div className="home-card card-small glass" onClick={() => onNavigate('shopping')}>
-          <div className="card-content centered">
-            <div className="shopping-badge">
-              <ShoppingCart size={32} className="icon-vibrant-green" />
-              <span className="badge-count">{pendingShopping}</span>
+        <div className="home-card card-small glass" onClick={() => onNavigate('shopping')} style={{ cursor: 'pointer' }}>
+          <div className="card-header" style={{ marginBottom: 12 }}>
+            <ShoppingCart size={20} className="icon-vibrant-green" />
+            <span className="card-tag">Spesa</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.8rem', fontWeight: 700, color: '#10b981' }}>
+              {pendingShopping} totali
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#fff4ec', borderRadius: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Store size={15} color="#7c4630" />
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#7c4630' }}>Supermercato</span>
+              </div>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#7c4630' }}>{pendingFood}</span>
             </div>
-            <span className="card-label">Articoli da comprare</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#eff6ff', borderRadius: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <HomeIcon size={15} color="#2d5a87" />
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#2d5a87' }}>Casa</span>
+              </div>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#2d5a87' }}>{pendingHome}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#f5f3ff', borderRadius: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Pill size={15} color="#5b21b6" />
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5b21b6' }}>Farmaci</span>
+              </div>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#5b21b6' }}>{pendingMed}</span>
+            </div>
           </div>
           <ChevronRight className="card-arrow" />
         </div>
 
         {/* Recipe Suggestion */}
-        <div className="home-card card-medium glass recipe-card" onClick={() => onNavigate('recipes')}>
+        <div className="home-card card-medium glass home-recipe-card" onClick={() => onNavigate('recipes')}>
           <div className="card-content">
             <div className="card-header">
               <BookOpen className="icon-vibrant-purple" size={20} />

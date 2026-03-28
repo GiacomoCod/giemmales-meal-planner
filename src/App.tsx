@@ -37,6 +37,7 @@ function App() {
     };
   }, [user?.uid, user?.email, user?.displayName]);
 
+  const [sessionReads, setSessionReads] = useState(0);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   const colPath = useCallback((name: string) => 
@@ -184,10 +185,12 @@ function App() {
     console.log("[FIREBASE] Sottoscrizione listeners globali per:", activeProfile.id);
 
     const unsubscribeShopping = onSnapshot(query(collection(db, colPath('shoppingList')), limit(100)), (snapshot) => {
+      setSessionReads(prev => prev + snapshot.docs.length);
       setShoppingList(snapshot.docs.map(d => d.data() as ShoppingItem));
     });
 
     const unsubscribeNotifications = onSnapshot(query(collection(db, colPath('notifications')), limit(20)), (snapshot) => {
+      setSessionReads(prev => prev + snapshot.docs.length);
       const list = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() } as NotificationItem))
         .sort((a, b) => b.timestamp - a.timestamp);
@@ -195,18 +198,22 @@ function App() {
     });
 
     const unsubscribeProfilePhoto = onSnapshot(doc(db, colPath('metadata'), 'profile'), (docSnap) => {
+      setSessionReads(prev => prev + (docSnap.exists() ? 1 : 0));
       setProfileAvatar(docSnap.exists() && docSnap.data().avatarBase64 ? docSnap.data().avatarBase64 : null);
     });
 
     const unsubscribeRecipes = onSnapshot(query(collection(db, colPath('recipes')), limit(100)), (snapshot) => {
+      setSessionReads(prev => prev + snapshot.docs.length);
       setRecipes(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe)));
     });
 
     const unsubscribeTags = onSnapshot(collection(db, colPath('tags')), (snapshot) => {
+      setSessionReads(prev => prev + snapshot.docs.length);
       setTags(snapshot.docs.map(d => d.data() as Tag));
     });
 
     const unsubscribeEvents = onSnapshot(query(collection(db, colPath('events')), limit(100)), (snapshot) => {
+      setSessionReads(prev => prev + snapshot.docs.length);
       setEvents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
     });
 
@@ -230,6 +237,7 @@ function App() {
     const unsubscribeMeals = onSnapshot(
       query(collection(db, colPath('mealPlans')), orderBy(documentId()), where(documentId(), '>=', start), where(documentId(), '<=', end)),
       (snapshot) => {
+        setSessionReads(prev => prev + snapshot.docs.length);
         const newPlan: MealPlan = {};
         snapshot.forEach(d => { newPlan[d.id] = d.data() as { [mealId: string]: MealEntry[] }; });
         setMealPlan(newPlan);
@@ -244,6 +252,7 @@ function App() {
     const unsubscribeNotes = onSnapshot(
       doc(db, colPath('weekNotes'), weekKey),
       (docSnap) => {
+        setSessionReads(prev => prev + (docSnap.exists() ? 1 : 0));
         if (docSnap.exists()) {
           setWeekNotes(docSnap.data().content || '');
         } else {
@@ -264,6 +273,7 @@ function App() {
     const unsubscribeCleaning = onSnapshot(
       doc(db, colPath('cleaningNotes'), weekKey),
       (docSnap) => {
+        setSessionReads(prev => prev + (docSnap.exists() ? 1 : 0));
         if (docSnap.exists()) {
           setCleaningNotes(docSnap.data().content || '');
         } else {
@@ -281,6 +291,7 @@ function App() {
   // Sync task settings
   useEffect(() => {
     const unsubscribeSettings = onSnapshot(collection(db, colPath('taskSettings')), (snapshot) => {
+      setSessionReads(prev => prev + snapshot.docs.length);
       const settings: TaskSettings = {};
       snapshot.docs.forEach(d => {
         const data = d.data();
@@ -300,6 +311,7 @@ function App() {
     const unsubscribeLogs = onSnapshot(
       query(collection(db, colPath('cleaningLogs')), orderBy('timestamp', 'desc'), limit(300)),
       (snapshot) => {
+        setSessionReads(prev => prev + snapshot.docs.length);
         const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CleaningLog));
         setCleaningLogs(list);
       },
@@ -315,6 +327,7 @@ function App() {
     const unsubscribeRoomTasks = onSnapshot(
       query(collection(db, colPath('roomTasks')), limit(200)),
       (snapshot) => {
+        setSessionReads(prev => prev + snapshot.docs.length);
         const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as RoomTask));
         setRoomTasks(list);
       },
@@ -395,11 +408,16 @@ function App() {
 
   const generateId = () => Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 
-  const handleAddItem = async (e: React.FormEvent) => {
+  const handleAddItem = async (e: React.FormEvent, category: 'supermarket' | 'home' | 'medicine' = 'supermarket') => {
     e.preventDefault();
     if (!newItemText.trim()) return;
 
-    const newItem: ShoppingItem = { id: generateId(), text: newItemText.trim(), checked: false };
+    const newItem: ShoppingItem = { 
+      id: generateId(), 
+      text: newItemText.trim(), 
+      checked: false,
+      category 
+    };
     setNewItemText('');
     setShowSuggestions(false);
 
@@ -410,8 +428,13 @@ function App() {
     }
   };
 
-  const handleAddSuggestion = async (text: string, icon: string) => {
-    const newItem: ShoppingItem = { id: generateId(), text: `${icon} ${text}`, checked: false };
+  const handleAddSuggestion = async (text: string, icon: string, category: 'supermarket' | 'home' | 'medicine') => {
+    const newItem: ShoppingItem = { 
+      id: generateId(), 
+      text: `${icon} ${text}`, 
+      checked: false,
+      category 
+    };
     setNewItemText('');
     setShowSuggestions(false);
 
@@ -1101,6 +1124,26 @@ function App() {
           <SettingsSection user={user} isGiemmale={isGiemmale} activeProfileId={activeProfile.id} />
         )}
       </div>
+
+      {isGiemmale && (
+        <div style={{
+          position: 'fixed',
+          bottom: '10px',
+          right: '80px',
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          color: '#4ade80',
+          padding: '4px 10px',
+          borderRadius: '50px',
+          fontSize: '11px',
+          zIndex: 9999,
+          pointerEvents: 'none',
+          fontFamily: 'monospace',
+          border: '1px solid #4ade80',
+          boxShadow: '0 0 10px rgba(74, 222, 128, 0.2)'
+        }}>
+          ● Session Reads: {sessionReads}
+        </div>
+      )}
     </div>
   );
 }

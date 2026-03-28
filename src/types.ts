@@ -53,6 +53,7 @@ export type ShoppingItem = {
   id: string;
   text: string;
   checked: boolean;
+  category: 'supermarket' | 'home' | 'medicine';
 };
 
 export interface NotificationItem {
