@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, Sparkles, Home, ChevronDown, User as UserIcon, Check, X } from 'lucide-react';
 
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths } from 'date-fns';
@@ -7,7 +7,7 @@ import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where
 import { parseISO } from 'date-fns';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
-import { db, app, auth } from './firebase';
+import { db, auth } from './firebase';
 import './App.css';
 
 import { SUGGESTIONS, DEFAULT_ROOM_TASKS, DUMMY_RECIPES } from './constants';
@@ -23,15 +23,19 @@ import { Login } from './components/Login';
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-
-  // Determine active profile from logged-in user context
   const isGiemmale = user?.email === 'giemmale@homeplanner.local';
-  
-  const activeProfile = user ? {
-    id: isGiemmale ? 'giemmale' : user.uid,
-    name: isGiemmale ? 'Casa dei Giemmale' : (user.displayName || user.email?.split('@')[0] || 'La Mia Casa'),
-    title: isGiemmale ? "Giemmale's HOME PLANNER" : `${user.displayName || user.email?.split('@')[0] || 'User'}'s HOME PLANNER`
-  } : { id: 'guest', name: 'Guest', title: 'HOME PLANNER' };
+
+  // UseMemo to ensure activeProfile identity is stable between renders
+  const activeProfile = useMemo(() => {
+    if (!user) return { id: 'guest', name: 'Guest', title: 'HOME PLANNER' };
+    const isGiemmale = user.email === 'giemmale@homeplanner.local';
+    return {
+      id: isGiemmale ? 'giemmale' : user.uid,
+      name: isGiemmale ? 'Casa dei Giemmale' : (user.displayName || user.email?.split('@')[0] || 'La Mia Casa'),
+      title: isGiemmale ? "Giemmale's HOME PLANNER" : `${user.displayName || user.email?.split('@')[0] || 'User'}'s HOME PLANNER`,
+      isGiemmale
+    };
+  }, [user?.uid, user?.email, user?.displayName]);
 
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
@@ -172,14 +176,14 @@ function App() {
     };
 
     migrationAndCleanup();
-  }, [activeProfile.id, colPath]);
+  }, [activeProfile.id, colPath]); // Removed 'user' to ensure stability
 
   // Real-time Firestore Listeners (Global/Static Collections)
   useEffect(() => {
-    if (!user) return;
-    console.log("[FIREBASE] Listeners globali per:", activeProfile.id);
+    if (activeProfile.id === 'guest') return;
+    console.log("[FIREBASE] Sottoscrizione listeners globali per:", activeProfile.id);
 
-    const unsubscribeShopping = onSnapshot(collection(db, colPath('shoppingList')), (snapshot) => {
+    const unsubscribeShopping = onSnapshot(query(collection(db, colPath('shoppingList')), limit(100)), (snapshot) => {
       setShoppingList(snapshot.docs.map(d => d.data() as ShoppingItem));
     });
 
@@ -194,7 +198,7 @@ function App() {
       setProfileAvatar(docSnap.exists() && docSnap.data().avatarBase64 ? docSnap.data().avatarBase64 : null);
     });
 
-    const unsubscribeRecipes = onSnapshot(collection(db, colPath('recipes')), (snapshot) => {
+    const unsubscribeRecipes = onSnapshot(query(collection(db, colPath('recipes')), limit(100)), (snapshot) => {
       setRecipes(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe)));
     });
 
@@ -202,11 +206,12 @@ function App() {
       setTags(snapshot.docs.map(d => d.data() as Tag));
     });
 
-    const unsubscribeEvents = onSnapshot(collection(db, colPath('events')), (snapshot) => {
+    const unsubscribeEvents = onSnapshot(query(collection(db, colPath('events')), limit(100)), (snapshot) => {
       setEvents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
     });
 
     return () => {
+      console.log("[FIREBASE] Pulizia listeners globali per:", activeProfile.id);
       unsubscribeShopping();
       unsubscribeNotifications();
       unsubscribeRecipes();
@@ -214,7 +219,7 @@ function App() {
       unsubscribeTags();
       unsubscribeEvents();
     };
-  }, [activeProfile.id, colPath, user]);
+  }, [activeProfile.id, colPath]); // REMOVED 'user' - ID and colPath are enough and more stable
 
   // Sync meal plans for the viewed window (Current Month +/- 1)
   useEffect(() => {
@@ -231,7 +236,7 @@ function App() {
       }
     );
     return () => unsubscribeMeals();
-  }, [activeProfile.id, colPath, currentMonth, user]);
+  }, [activeProfile.id, colPath, currentMonth]); // Removed 'user'
 
   // Sync notes for the selected week
   useEffect(() => {
@@ -293,7 +298,7 @@ function App() {
   // Sync cleaning logs
   useEffect(() => {
     const unsubscribeLogs = onSnapshot(
-      collection(db, colPath('cleaningLogs')),
+      query(collection(db, colPath('cleaningLogs')), orderBy('timestamp', 'desc'), limit(300)),
       (snapshot) => {
         const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CleaningLog));
         setCleaningLogs(list);
@@ -308,7 +313,7 @@ function App() {
   // Sync room tasks — pure listener, no side-effects
   useEffect(() => {
     const unsubscribeRoomTasks = onSnapshot(
-      collection(db, colPath('roomTasks')),
+      query(collection(db, colPath('roomTasks')), limit(200)),
       (snapshot) => {
         const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as RoomTask));
         setRoomTasks(list);
@@ -318,13 +323,15 @@ function App() {
       }
     );
     return () => unsubscribeRoomTasks();
-  }, [activeProfile.id]);
+  }, [activeProfile.id, colPath]); // Added colPath for stability
 
   // One-shot seeding — uses getDocs so it never reacts to its own writes
   useEffect(() => {
     const seedDefaults = async () => {
-      if (!user || hasSeededRef.current.has(activeProfile.id)) return;
+      if (activeProfile.id === 'guest' || hasSeededRef.current.has(activeProfile.id)) return;
       hasSeededRef.current.add(activeProfile.id);
+      
+      console.log("[FIREBASE] Controllo seeding per:", activeProfile.id);
       
       // Smart Seed: check if any tasks exist for this profile
       const tasksSnap = await getDocs(query(collection(db, colPath('roomTasks')), limit(1)));
@@ -340,7 +347,7 @@ function App() {
       // Smart Seed: check if any tags exist
       const tagsSnap = await getDocs(query(collection(db, colPath('tags')), limit(1)));
       if (tagsSnap.empty) {
-        if (isGiemmale) {
+        if (activeProfile.isGiemmale) {
           const defaultTags: Tag[] = [
             { id: 'ale', label: 'Ale', color: '#ffecf1' },
             { id: 'giem', label: 'Giem', color: '#e3f2fd' },
@@ -358,7 +365,7 @@ function App() {
     };
 
     seedDefaults();
-  }, [activeProfile.id, isGiemmale, activeProfile.name, colPath, user]);
+  }, [activeProfile.id, colPath]); // Stripped down to most target dependencies
 
   const handleUpdateNotes = async (content: string) => {
     setWeekNotes(content);

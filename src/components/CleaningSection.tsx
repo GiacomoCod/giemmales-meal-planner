@@ -52,7 +52,7 @@ export function CleaningSection({
 }: CleaningSectionProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
-  const getTaskUrgency = (logDate: string, taskType: string) => {
+  const getTaskUrgency = (logDate: string, taskType: string, now: number) => {
     if (!logDate) return { progress: 0, color: '#48bb78', daysRemaining: null };
     const dateObj = parseISO(logDate);
     if (isNaN(dateObj.getTime())) return { progress: 0, color: '#48bb78', daysRemaining: null };
@@ -63,12 +63,13 @@ export function CleaningSection({
     else if (setting.unit === 'mesi') totalDays = setting.value * 30;
     else if (setting.unit === 'anni') totalDays = setting.value * 365;
 
-    const daysPassed = Math.max(0, Math.floor((Date.now() - dateObj.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysPassed = Math.max(0, Math.floor((now - dateObj.getTime()) / (1000 * 60 * 60 * 24)));
     const progress = Math.min(100, (daysPassed / totalDays) * 100);
     const daysRemaining = Math.max(0, totalDays - daysPassed);
     
     const hue = Math.round(120 - (progress / 100) * 120);
     const color = `hsl(${hue}, 80%, 48%)`;
+
     
     return { progress, color, daysRemaining };
   };
@@ -200,20 +201,22 @@ export function CleaningSection({
                 )}
               </div>
 
-              {/* Task List */}
+        {/* Task List */}
               <div className="task-cards-list">
-                {roomTasks
-                  .filter(t => t.roomId === selectedRoom)
-                  .sort((a, b) => a.createdAt - b.createdAt)
-                  .map(task => {
-                    const latestLog = cleaningLogs
-                      .filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
-                      .sort((a, b) => b.timestamp - a.timestamp)[0] || null;
-                    const { progress, color, daysRemaining } = getTaskUrgency(latestLog?.date || '', task.taskName);
-                    const isOverdue = progress >= 100;
-
-                    return (
-                      <div key={task.id} className={`task-card ${isOverdue ? 'task-card-overdue' : ''}`}>
+                {(() => {
+                  const now = Date.now();
+                  return roomTasks
+                    .filter(t => t.roomId === selectedRoom)
+                    .sort((a, b) => a.createdAt - b.createdAt)
+                    .map(task => {
+                      const latestLog = cleaningLogs
+                        .filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
+                        .sort((a, b) => b.timestamp - a.timestamp)[0] || null;
+                      const { progress, color, daysRemaining } = getTaskUrgency(latestLog?.date || '', task.taskName, now);
+                      const isOverdue = progress >= 100;
+  
+                      return (
+                        <div key={task.id} className={`task-card ${isOverdue ? 'task-card-overdue' : ''}`}>
                         <div className="task-card-header">
                           <div className="task-card-name-group">
                             <span className="task-card-name">{task.taskName}</span>
@@ -330,8 +333,8 @@ export function CleaningSection({
                         </button>
                       </div>
                     );
-                  })
-                }
+                  });
+                })()}
                 {roomTasks.filter(t => t.roomId === selectedRoom).length === 0 && (
                   <p className="no-history">Nessuna mansione configurata. Aggiungine una!</p>
                 )}
