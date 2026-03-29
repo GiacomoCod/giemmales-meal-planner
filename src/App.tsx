@@ -375,6 +375,7 @@ function App() {
           await setDoc(doc(db, colPath('tags'), defaultTag.id), defaultTag);
         }
       }
+
     };
 
     seedDefaults();
@@ -596,11 +597,20 @@ function App() {
       const isNew = !recipes.some(r => r.id === tempRecipe.id);
       
       try {
-        // Persist in Firestore
-        await setDoc(doc(db, colPath('recipes'), tempRecipe.id), tempRecipe);
+        // Persist in Firestore - onSnapshot will handle the optimistic UI update automatically
+        const docRef = doc(db, colPath('recipes'), tempRecipe.id);
+        const dataStr = JSON.stringify(tempRecipe);
         
-        setSelectedRecipe(tempRecipe);
+        // Firestore has a 1MB limit for documents. Base64 adds overhead (~33%).
+        // 1,048,576 byte totali. Usiamo 1,020,000 come margine quasi nullo (come richiesto dall'utente)
+        if (dataStr.length > 1020 * 1024) {
+          alert("L'immagine è ai limiti estremi del database. Se il salvataggio fallisce, prova a ridurla leggermente.");
+        }
+
+        await setDoc(docRef, tempRecipe);
+        
         setIsEditingRecipe(false);
+        setSelectedRecipe(null); // Close the modal
 
         // Add Notification
         const notifId = generateId();
@@ -609,8 +619,13 @@ function App() {
           timestamp: Date.now(),
           read: false
         });
-      } catch (e) {
+      } catch (e: any) {
         console.error("Error saving recipe:", e);
+        if (e?.code === 'out-of-range' || e?.message?.includes('too large')) {
+          alert("Errore: Il contenuto della ricetta è troppo grande per essere salvato.");
+        } else {
+          alert("Si è verificato un errore durante il salvataggio della ricetta.");
+        }
       }
     }
   };
@@ -719,10 +734,85 @@ function App() {
     if (file && tempRecipe) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setTempRecipe({ ...tempRecipe, image: reader.result as string });
+        const base64 = reader.result as string;
+        
+        // Se il file è grande (> 200KB), lo comprimiamo
+        if (file.size > 200 * 1024) {
+          compressImage(base64, (compressed) => {
+            setTempRecipe(prev => prev ? { ...prev, image: compressed } : null);
+          });
+        } else {
+          setTempRecipe(prev => prev ? { ...prev, image: base64 } : null);
+        }
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  /** Helper per comprimere le immagini in modo dinamico per massimizzare la qualità entro il limite di 1MB */
+  const compressImage = (base64: string, callback: (result: string) => void) => {
+    const img = new Image();
+    img.src = base64;
+    img.onload = () => {
+      let currentQuality = 0.8;
+      let currentMaxWidth = 1200;
+      let iterations = 0;
+      const MAX_ITERATIONS = 10;
+      const TARGET_SIZE = 1000 * 1024; // ~1MB di margine per stare sicuri (Firestore limite 1MB)
+
+      const attemptCompression = (width: number, height: number, quality: number): string => {
+        const canvas = document.createElement('canvas');
+        let newWidth = width;
+        let newHeight = height;
+
+        if (newWidth > newHeight) {
+          if (newWidth > currentMaxWidth) {
+            newHeight *= currentMaxWidth / newWidth;
+            newWidth = currentMaxWidth;
+          }
+        } else {
+          if (newHeight > currentMaxWidth) {
+            newWidth *= currentMaxWidth / newHeight;
+            newHeight = currentMaxWidth;
+          }
+        }
+
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return base64;
+        
+        ctx.drawImage(img, 0, 0, newWidth, newHeight);
+        return canvas.toDataURL('image/jpeg', quality);
+      };
+
+      let finalResult = base64;
+      
+      // Loop di ottimizzazione per trovare il "punto di rottura" perfetto
+      while (iterations < MAX_ITERATIONS) {
+        const result = attemptCompression(img.width, img.height, currentQuality);
+        const size = result.length;
+        
+        if (size <= TARGET_SIZE) {
+          finalResult = result;
+          break;
+        }
+
+        // Se è ancora troppo grande, scendiamo di qualità o risoluzione
+        if (currentQuality > 0.4) {
+          currentQuality -= 0.1;
+        } else {
+          currentMaxWidth -= 200;
+          currentQuality = 0.6; // Reset qualità se scendiamo di risoluzione
+        }
+        
+        iterations++;
+        finalResult = result;
+      }
+      
+      callback(finalResult);
+    };
+    img.onerror = () => callback(base64);
   };
 
   const handleAddTag = async (tag: Tag) => {

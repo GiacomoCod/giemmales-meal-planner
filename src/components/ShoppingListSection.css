@@ -105,6 +105,7 @@
   transition: all 0.2s ease;
   white-space: nowrap;
   font-family: inherit;
+  min-width: 0;
 }
 
 /* Supermercato: warm peach pastel (matches --col-martedi) */
@@ -570,9 +571,31 @@
   }
   .s-category-tabs {
     flex-direction: row;
+    flex-wrap: wrap; /* Allow wrapping at 900px already */
+    gap: 8px;
   }
   .shopping-page-title {
     font-size: 1.8rem;
+  }
+}
+
+/* Intermediate breakpoint for better mobile scaling */
+@media (max-width: 768px) {
+  .s-widget-add {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 20px;
+  }
+  .s-category-tabs {
+    width: 100%;
+  }
+  .s-cat-btn {
+    flex: 1 1 100%; /* Full width stack on mobile to avoid label clipping */
+    min-width: 0;
+  }
+  .s-input-row {
+     flex-direction: column;
+     display: flex !important;
   }
 }
 
@@ -586,9 +609,10 @@
   .shopping-header-row {
     gap: 10px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
   }
   .shopping-page-title {
-    font-size: 1.4rem;
+    font-size: 1.6rem;
     letter-spacing: -0.5px;
   }
   .shopping-page-subtitle {
@@ -607,50 +631,59 @@
   .s-widget-add {
     flex-direction: column;
     align-items: stretch;
-    padding: 16px;
-    gap: 14px;
+    padding: 18px 16px;
+    gap: 16px;
   }
   .s-add-divider {
-    width: auto;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+    display: none; /* Hide vertical divider on mobile */
   }
 
-  /* Category tabs: horizontal pill row */
+  /* Category tabs: row with wrap for 3+ items */
   .s-category-tabs {
     flex-direction: row;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 4px;
   }
   .s-cat-btn {
-    flex: 1;
-    justify-content: center;
-    padding: 8px 10px;
-    font-size: 0.78rem;
-    border-radius: 12px;
-    gap: 6px;
+    flex: 1 1 100%; /* Full width stack on mobile to avoid label clipping */
+    min-width: 0;
+    justify-content: flex-start;
+    padding: 12px 16px;
+    font-size: 0.95rem;
+    border-radius: 16px;
+    gap: 12px;
   }
+
   .s-cat-btn .s-add-icon-ring {
-    width: 24px !important;
-    height: 24px !important;
-    border-radius: 7px !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 8px !important;
+    flex-shrink: 0;
   }
 
   /* Input row */
   .s-input-row {
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     align-items: stretch;
+    display: flex !important;
   }
   .s-input {
-    padding: 12px 14px 12px 38px;
-    font-size: 0.95rem;
+    padding: 14px 14px 14px 42px;
+    font-size: 1rem;
+    width: 100% !important;
+  }
+  .s-input-icon {
+    left: 14px;
   }
   .s-submit-btn {
     width: 100%;
     justify-content: center;
-    padding: 12px 16px;
-    font-size: 0.9rem;
+    padding: 14px 16px;
+    font-size: 1rem;
     border-radius: 14px;
+    height: 48px; /* Touch friendly */
   }
 
   /* Suggestions panel */
@@ -676,14 +709,15 @@
     height: 38px;
   }
   .s-list-name {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
   }
   .s-list-subtitle {
-    font-size: 0.72rem;
+    font-size: 0.75rem;
   }
   .s-count-badge {
     padding: 4px 10px;
     font-size: 0.75rem;
+    margin-left: auto; /* Push to right */
   }
 
   /* List items */
