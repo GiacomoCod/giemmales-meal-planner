@@ -3,7 +3,7 @@ import { Trash2, Check, X } from 'lucide-react';
 import type { MealEntry, Tag } from '../types';
 
 export function MealSlot({
-  meal, entries, onAdd, onRemove, onUpdateAssignee, onUpdateText, tags
+  meal, entries, onAdd, onRemove, onUpdateAssignee, onUpdateText, tags, hideHeader = false
 }: {
   meal: { id: string; label: string; Icon: any };
   entries: MealEntry[];
@@ -12,6 +12,7 @@ export function MealSlot({
   onUpdateAssignee: (id: string, newAssignee: string) => void;
   onUpdateText: (id: string, newText: string) => void;
   tags: Tag[];
+  hideHeader?: boolean;
 }) {
   const [text, setText] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -62,10 +63,12 @@ export function MealSlot({
 
   return (
     <div className="meal-slot">
-      <div className="meal-header">
-        <Icon className="meal-icon" size={20} strokeWidth={2.5} />
-        <h3 className="meal-title">{meal.label}</h3>
-      </div>
+      {!hideHeader && (
+        <div className="meal-header">
+          <Icon className="meal-icon" size={20} strokeWidth={2.5} />
+          <h3 className="meal-title">{meal.label}</h3>
+        </div>
+      )}
 
       <ul className="meal-entries">
         {entries.map(entry => (

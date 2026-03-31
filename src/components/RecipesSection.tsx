@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { BookOpen, Plus, Trash2, X, Pencil, ShoppingCart, Check } from 'lucide-react';
-import type { Recipe } from '../types';
+import { BookOpen, Plus, Trash2, X, Pencil, ShoppingCart, Check, Settings, MoreVertical, List, Eye, Users } from 'lucide-react';
+import type { Recipe, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
+import cookbookImg from '../assets/cookbook-3d.png';
+import './RecipesSection.css';
 
 interface RecipesSectionProps {
+  isMobile: boolean;
   recipes: Recipe[];
   handleRecipeClick: (r: Recipe) => void;
   handleAddNewRecipe: () => void;
@@ -16,9 +19,17 @@ interface RecipesSectionProps {
   setTempRecipe: React.Dispatch<React.SetStateAction<Recipe | null>>;
   handleImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSaveRecipe: () => void;
+  tags: Tag[];
+  onAddTag: (tag: Tag) => void;
+  onDeleteTag: (tagId: string) => void;
 }
 
+const TAG_COLORS = [
+  '#ffecf1', '#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#f1f8e9', '#e0f2f1', '#fce4ec'
+];
+
 export function RecipesSection({
+  isMobile,
   recipes,
   handleRecipeClick,
   handleAddNewRecipe,
@@ -30,219 +41,509 @@ export function RecipesSection({
   tempRecipe,
   setTempRecipe,
   handleImageUpload,
-  handleSaveRecipe
+  handleSaveRecipe,
+  tags,
+  onAddTag,
+  onDeleteTag
 }: RecipesSectionProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showModalDeleteConfirm, setShowModalDeleteConfirm] = useState(false);
+  const [showTagSettings, setShowTagSettings] = useState(false);
+  const [newTagLabel, setNewTagLabel] = useState('');
+  const [showTagDeleteConfirm, setShowTagDeleteConfirm] = useState<string | null>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showRecipesSheet, setShowRecipesSheet] = useState(false);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
+  const [swipingId, setSwipingId] = useState<string | null>(null);
+
+  const handleCreateTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newTagLabel.trim()) {
+      const id = newTagLabel.trim().toLowerCase().replace(/\s+/g, '-');
+      const color = TAG_COLORS[tags.length % TAG_COLORS.length];
+      onAddTag({ id, label: newTagLabel.trim(), color });
+      setNewTagLabel('');
+    }
+  };
+
+  // Swipe logic
+  const handleTouchStart = (e: React.TouchEvent, id: string) => {
+    setTouchStartX(e.touches[0].clientX);
+    setSwipingId(id);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartX === null || swipingId === null) return;
+    const deltaX = e.touches[0].clientX - touchStartX;
+    // Only allow swiping to the right (deltaX > 0)
+    if (deltaX > 0) {
+      setSwipeOffsets(prev => ({ ...prev, [swipingId]: Math.min(deltaX, 120) }));
+    }
+  };
+
+  const handleTouchEnd = (id: string) => {
+    const offset = swipeOffsets[id] || 0;
+    if (offset > 80) {
+      setShowDeleteConfirm(id);
+    }
+    setSwipeOffsets(prev => ({ ...prev, [id]: 0 }));
+    setTouchStartX(null);
+    setSwipingId(null);
+  };
+
+  const getTagByLabel = (label?: string) => {
+    if (!label) return null;
+    return tags.find(t => t.label === label);
+  };
   return (
-    <main className="main-content recipes-only">
-      <section className="recipes-section">
-        <div className="recipes-header-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <BookOpen className="recipes-icon" size={26} strokeWidth={2.5} />
-          <h2 className="recipes-title-main">Le mie ricette</h2>
-          <InfoTooltip text="Il tuo ricettario personale. Crea nuove ricette cliccando il tasto '+' in fondo alla lista. Puoi aggiungere ingredienti, passaggi e una foto per ogni piatto." position="right" />
-        </div>
-
-        <div className="recipes-grid">
-          {recipes.map(recipe => (
-            <div key={recipe.id} className="recipe-card" onClick={() => handleRecipeClick(recipe)}>
-              <div className="recipe-image-wrapper">
-                <img src={recipe.image} alt={recipe.title} className="recipe-image" />
-                <div className="recipe-overlay">
-                  <Plus size={24} color="white" />
-                </div>
+    <>
+      <main className="main-content recipes-only">
+        <section className="recipes-section">
+          <header className="recipes-hero">
+            <div className="recipes-hero-text">
+              <span className="recipes-welcome-label">Creatività in Cucina</span>
+              <div className="recipes-hero-header-content">
+                <h1 className="recipes-hero-page-title">Ricettario</h1>
+                <InfoTooltip text="Il tuo ricettario personale. Crea nuove ricette cliccando il tasto '+' in fondo alla lista. Puoi aggiungere ingredienti, passaggi e una foto per ogni piatto." position="right" />
               </div>
-              <div className="recipe-info">
-                <div className="recipe-info-header">
-                  <h3 className="recipe-title">{recipe.title}</h3>
-                  {showDeleteConfirm === recipe.id ? (
-                    <div className="delete-confirm-inline" onClick={e => e.stopPropagation()}>
-                      <button
-                        className="confirm-btn-mini"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteRecipe(recipe.id);
-                          setShowDeleteConfirm(null);
-                        }}
-                        title="Conferma eliminazione"
-                      >
-                        <Check size={14} strokeWidth={3} />
-                      </button>
-                      <button
-                        className="cancel-btn-mini"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowDeleteConfirm(null);
-                        }}
-                        title="Annulla"
-                      >
-                        <X size={14} strokeWidth={3} />
-                      </button>
+              <p className="recipes-hero-page-subtitle">Le tue ricette preferite, tutte in un unico posto</p>
+              
+              {!isMobile && (
+                <div className="recipes-hero-actions">
+                  <div className="recipes-hero-tag-trigger" onClick={() => setShowTagSettings(true)}>
+                    <Settings size={20} />
+                    <span>Personalizza Targhette</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="recipes-hero-graphic">
+              <div className="floating-book-wrapper">
+                <img src={cookbookImg} alt="Cookbook" className="floating-book" />
+                <div className="book-shadow"></div>
+              </div>
+            </div>
+          </header>
+
+          <div className={`recipes-grid ${isMobile ? 'is-mobile' : ''}`}>
+            {recipes.map(recipe => (
+              <div key={recipe.id} className="recipe-card" onClick={() => handleRecipeClick(recipe)}>
+                <div className="recipe-image-wrapper">
+                  <img src={recipe.image} alt={recipe.title} className="recipe-image" />
+                  {!isMobile && (
+                    <div className="recipe-overlay">
+                      <Plus size={24} color="white" />
                     </div>
-                  ) : (
-                    <button
-                      className="recipe-card-delete"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDeleteConfirm(recipe.id);
+                  )}
+                  {recipe.authorId && (
+                    <div 
+                      className="recipe-author-badge" 
+                      style={{ 
+                        backgroundColor: getTagByLabel(recipe.authorId)?.color || '#f1f5f9'
                       }}
-                      title="Elimina ricetta"
                     >
-                      <Trash2 size={16} />
-                    </button>
+                      {recipe.authorId}
+                    </div>
                   )}
                 </div>
-                <p className="recipe-description">{recipe.description}</p>
+                <div className="recipe-info">
+                  <div className="recipe-info-header">
+                    <h3 className="recipe-title">{recipe.title}</h3>
+                    {showDeleteConfirm === recipe.id ? (
+                      <div className="delete-confirm-inline" onClick={e => e.stopPropagation()}>
+                        <button
+                          className="confirm-btn-mini"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteRecipe(recipe.id);
+                            setShowDeleteConfirm(null);
+                          }}
+                        >
+                          <Check size={isMobile ? 18 : 14} strokeWidth={3} />
+                        </button>
+                        <button
+                          className="cancel-btn-mini"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowDeleteConfirm(null);
+                          }}
+                        >
+                          <X size={isMobile ? 18 : 14} strokeWidth={3} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="recipe-card-delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDeleteConfirm(recipe.id);
+                        }}
+                      >
+                        <Trash2 size={isMobile ? 20 : 16} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="recipe-description">{recipe.description}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          <div className="recipe-card add-new-recipe" onClick={handleAddNewRecipe}>
-            <div className="add-recipe-content">
-              <div className="add-icon-circle">
-                <Plus size={32} strokeWidth={2.5} />
+            {!isMobile && (
+              <div className="recipe-card add-new-recipe" onClick={handleAddNewRecipe}>
+                <div className="add-recipe-content">
+                  <div className="add-icon-circle">
+                    <Plus size={32} strokeWidth={2.5} />
+                  </div>
+                  <span className="add-recipe-text">Aggiungi nuova ricetta</span>
+                </div>
               </div>
-              <span className="add-recipe-text">Aggiungi nuova ricetta</span>
-            </div>
+            )}
           </div>
-        </div>
-      </section>
-
-      {selectedRecipe && (
-        <div className="recipe-modal-overlay" onClick={() => setSelectedRecipe(null)}>
-          <div className="recipe-modal-content" onClick={e => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setSelectedRecipe(null)}>
-              <X size={24} />
-            </button>
-
-            <div className="modal-body">
-              <div className={`modal-image-section ${isEditingRecipe ? 'editing-image' : ''}`}
-                onClick={() => isEditingRecipe && document.getElementById('recipe-image-input')?.click()}
-              >
-                <img src={isEditingRecipe ? tempRecipe?.image : selectedRecipe.image} alt={selectedRecipe.title} />
-                <div className="modal-image-overlay">
-                  {isEditingRecipe ? (
-                    <div className="edit-image-prompt">
-                      <Plus size={32} />
-                      <span>Cambia Foto</span>
-                      <input
-                        type="file"
-                        id="recipe-image-input"
-                        hidden
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                      />
-                    </div>
-                  ) : (
-                    <button className="edit-trigger-btn" onClick={() => setIsEditingRecipe(true)}>
-                      <Pencil size={18} />
-                      <span>Modifica Ricetta</span>
+          
+          {isMobile && (
+            <>
+              {/* FAB Left: More options */}
+              <div className="mobile-fab-container-left">
+                {showMoreMenu && (
+                  <div className="mobile-more-menu" onClick={e => e.stopPropagation()}>
+                    <button className="mobile-menu-item" onClick={() => { setShowTagSettings(true); setShowMoreMenu(false); }}>
+                      <Settings size={20} />
+                      <span>Personalizzazione targhette</span>
                     </button>
-                  )}
-                </div>
+                    <button className="mobile-menu-item" onClick={() => { setShowRecipesSheet(true); setShowMoreMenu(false); }}>
+                      <List size={20} />
+                      <span>Gestione delle ricette</span>
+                    </button>
+                  </div>
+                )}
+                <button 
+                  className={`mobile-fab-more ${showMoreMenu ? 'active' : ''}`}
+                  onClick={() => setShowMoreMenu(!showMoreMenu)}
+                >
+                  <MoreVertical size={28} />
+                </button>
               </div>
 
-              <div className="modal-info-section">
-                {isEditingRecipe ? (
-                  <div className="edit-form-container">
-                    <input
-                      className="edit-title-input"
-                      value={tempRecipe?.title || ''}
-                      onChange={e => setTempRecipe(prev => prev ? { ...prev, title: e.target.value } : null)}
-                      placeholder="Titolo della ricetta"
-                    />
-                    <textarea
-                      className="edit-desc-textarea"
-                      value={tempRecipe?.description || ''}
-                      onChange={e => setTempRecipe(prev => prev ? { ...prev, description: e.target.value } : null)}
-                      placeholder="Breve descrizione"
-                    />
+              {/* FAB Right: Add recipe */}
+              <button className="mobile-fab-add" onClick={handleAddNewRecipe}>
+                <Plus size={28} />
+              </button>
 
-                    <div className="edit-details-grid">
-                      <div className="edit-column">
-                        <h4>Ingredienti (uno per riga)</h4>
-                        <textarea
-                          value={tempRecipe?.ingredients?.join('\n') || ''}
-                          onChange={e => setTempRecipe(prev => prev ? { ...prev, ingredients: e.target.value.split('\n') } : null)}
-                        />
-                      </div>
-                      <div className="edit-column">
-                        <h4>Passaggi (uno per riga)</h4>
-                        <textarea
-                          value={tempRecipe?.steps?.join('\n') || ''}
-                          onChange={e => setTempRecipe(prev => prev ? { ...prev, steps: e.target.value.split('\n') } : null)}
-                        />
-                      </div>
+              {/* Recipes Management Sheet */}
+              {showRecipesSheet && (
+                <div className="management-sheet-overlay" onClick={() => setShowRecipesSheet(false)}>
+                  <div className="management-sheet-content" onClick={e => e.stopPropagation()}>
+                    <div className="management-sheet-header">
+                      <h3><BookOpen size={24} /> Elenco Ricette</h3>
+                      <button className="management-sheet-close" onClick={() => setShowRecipesSheet(false)}>
+                        <X size={24} />
+                      </button>
                     </div>
-
-                    <div className="edit-actions">
-                      <button className="cancel-btn" onClick={() => setIsEditingRecipe(false)}>Annulla</button>
-                      <button className="save-btn" onClick={handleSaveRecipe}>Salva Modifiche</button>
+                    <div className="management-sheet-body">
+                      {recipes.map(recipe => (
+                        <div key={recipe.id} className="swipe-item-wrapper">
+                          <div className="swipe-action-reveal">
+                            <Trash2 size={24} />
+                          </div>
+                          <div 
+                            className={`management-list-item swipeable-content ${swipeOffsets[recipe.id] > 0 ? 'is-swiping' : ''}`}
+                            style={{ transform: `translateX(${swipeOffsets[recipe.id] || 0}px)` }}
+                            onTouchStart={(e) => handleTouchStart(e, recipe.id)}
+                            onTouchMove={(e) => handleTouchMove(e)}
+                            onTouchEnd={() => handleTouchEnd(recipe.id)}
+                            onClick={() => { handleRecipeClick(recipe); setShowRecipesSheet(false); }}
+                          >
+                            <div className="management-item-details">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span className="management-item-title">{recipe.title}</span>
+                                {showDeleteConfirm === recipe.id && (
+                                  <span className="confirm-badge" style={{ color: '#ef4444', fontSize: '0.7rem', fontWeight: 800 }}>ELIMINA?</span>
+                                )}
+                              </div>
+                              <span className="management-item-subtitle">{recipe.ingredients?.length || 0} ingredienti • {recipe.steps?.length || 0} passaggi</span>
+                            </div>
+                            <div className="management-item-actions">
+                               <button className="management-action-btn"><Eye size={18} /></button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div className="modal-title-row">
-                      <h2 className="modal-title">{selectedRecipe.title}</h2>
-                      {showModalDeleteConfirm ? (
-                        <div className="delete-confirm-inline modal-delete-confirm">
-                          <span className="confirm-text">Sicuro?</span>
-                          <button 
-                            className="confirm-btn-mini" 
-                            onClick={() => {
-                              handleDeleteRecipe(selectedRecipe.id);
-                              setSelectedRecipe(null);
-                              setShowModalDeleteConfirm(false);
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        {selectedRecipe && (
+          <div className={`recipe-modal-overlay ${isMobile ? 'is-mobile' : ''}`} onClick={() => setSelectedRecipe(null)}>
+            <div className="recipe-modal-content" onClick={e => e.stopPropagation()}>
+              <button className="modal-close-btn" onClick={() => setSelectedRecipe(null)}>
+                <X size={isMobile ? 32 : 24} />
+              </button>
+
+              <div className="modal-body">
+                <div className={`modal-image-section ${isEditingRecipe ? 'editing-image' : ''}`}
+                  onClick={() => isEditingRecipe && document.getElementById('recipe-image-input')?.click()}
+                >
+                  <img src={isEditingRecipe ? tempRecipe?.image : selectedRecipe.image} alt={selectedRecipe.title} />
+                  <div className="modal-image-overlay">
+                    {isEditingRecipe ? (
+                      <div className="edit-image-prompt">
+                        <Plus size={32} />
+                        <span>Cambia Foto</span>
+                        <input
+                          type="file"
+                          id="recipe-image-input"
+                          hidden
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                        />
+                      </div>
+                    ) : (
+                      <button className="edit-trigger-btn" onClick={() => setIsEditingRecipe(true)}>
+                        <Pencil size={18} />
+                        <span>Modifica Ricetta</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="modal-info-section">
+                  {isEditingRecipe ? (
+                    <div className="edit-form-container">
+                      <input
+                        className="edit-title-input"
+                        value={tempRecipe?.title || ''}
+                        onChange={e => setTempRecipe(prev => prev ? { ...prev, title: e.target.value } : null)}
+                        placeholder="Titolo della ricetta"
+                      />
+                      <textarea
+                        className="edit-desc-textarea"
+                        value={tempRecipe?.description || ''}
+                        onChange={e => setTempRecipe(prev => prev ? { ...prev, description: e.target.value } : null)}
+                        placeholder="Breve descrizione"
+                      />
+
+                      <div className="edit-author-section" style={{ marginBottom: '16px' }}>
+                        <h4 style={{ fontSize: '0.85rem', marginBottom: '8px', color: '#64748b' }}>Chi ha creato questa ricetta?</h4>
+                        <div className="author-picker" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {tags.map(tag => (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              className={`author-pick-btn ${tempRecipe?.authorId === tag.label ? 'active' : ''}`}
+                              style={{
+                                backgroundColor: tag.color,
+                                opacity: tempRecipe?.authorId === tag.label ? 1 : 0.6
+                              }}
+                              onClick={() => setTempRecipe(prev => prev ? { ...prev, authorId: tag.label } : null)}
+                            >
+                              {tag.label}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            className={`author-pick-btn ${!tempRecipe?.authorId ? 'active' : ''}`}
+                            style={{
+                              backgroundColor: 'white',
+                              opacity: !tempRecipe?.authorId ? 1 : 0.6,
+                              border: '1px solid #e2e8f0'
                             }}
+                            onClick={() => setTempRecipe(prev => prev ? { ...prev, authorId: undefined } : null)}
                           >
-                            <Check size={18} strokeWidth={2.5} />
-                          </button>
-                          <button 
-                            className="cancel-btn-mini" 
-                            onClick={() => setShowModalDeleteConfirm(false)}
-                          >
-                            <X size={18} strokeWidth={2.5} />
+                            Nessuno
                           </button>
                         </div>
-                      ) : (
-                        <button
-                          className="modal-delete-btn"
-                          onClick={() => setShowModalDeleteConfirm(true)}
-                          title="Elimina ricetta"
-                        >
-                          <Trash2 size={20} />
-                          <span>Elimina</span>
-                        </button>
-                      )}
-                    </div>
-                    <p className="modal-description">{selectedRecipe.description}</p>
-
-                    <div className="recipe-details-content">
-                      <div className="ingredients-section">
-                        <h3><ShoppingCart size={18} /> Ingredienti</h3>
-                        <ul>
-                          {selectedRecipe.ingredients?.map((ing, i) => (
-                            <li key={i}>{ing}</li>
-                          ))}
-                        </ul>
                       </div>
 
-                      <div className="steps-section">
-                        <h3><BookOpen size={18} /> Preparazione</h3>
-                        <ol>
-                          {selectedRecipe.steps?.map((step, i) => (
-                            <li key={i}>{step}</li>
-                          ))}
-                        </ol>
+                      <div className="edit-details-grid">
+                        <div className="edit-column">
+                          <h4>Ingredienti (uno per riga)</h4>
+                          <textarea
+                            value={tempRecipe?.ingredients?.join('\n') || ''}
+                            onChange={e => setTempRecipe(prev => prev ? { ...prev, ingredients: e.target.value.split('\n') } : null)}
+                          />
+                        </div>
+                        <div className="edit-column">
+                          <h4>Passaggi (uno per riga)</h4>
+                          <textarea
+                            value={tempRecipe?.steps?.join('\n') || ''}
+                            onChange={e => setTempRecipe(prev => prev ? { ...prev, steps: e.target.value.split('\n') } : null)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="edit-actions">
+                        <button className="cancel-btn" onClick={() => setIsEditingRecipe(false)}>Annulla</button>
+                        <button className="save-btn" onClick={handleSaveRecipe}>Salva Modifiche</button>
                       </div>
                     </div>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <div className="modal-title-row">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <h2 className="modal-title">{selectedRecipe.title}</h2>
+                          {selectedRecipe.authorId && (
+                            <span 
+                              className="recipe-author-badge-modal"
+                              style={{
+                                backgroundColor: getTagByLabel(selectedRecipe.authorId)?.color || '#f1f5f9'
+                              }}
+                            >
+                              Creatore: {selectedRecipe.authorId}
+                            </span>
+                          )}
+                        </div>
+                        {showModalDeleteConfirm ? (
+                          <div className="delete-confirm-inline modal-delete-confirm">
+                            <span className="confirm-text">Sicuro?</span>
+                            <button 
+                              className="confirm-btn-mini" 
+                              onClick={() => {
+                                handleDeleteRecipe(selectedRecipe.id);
+                                setSelectedRecipe(null);
+                                setShowModalDeleteConfirm(false);
+                              }}
+                            >
+                              <Check size={18} strokeWidth={2.5} />
+                            </button>
+                            <button 
+                              className="cancel-btn-mini" 
+                              onClick={() => setShowModalDeleteConfirm(false)}
+                            >
+                              <X size={18} strokeWidth={2.5} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="modal-delete-btn"
+                            onClick={() => setShowModalDeleteConfirm(true)}
+                            title="Elimina ricetta"
+                          >
+                            <Trash2 size={20} />
+                            <span>Elimina</span>
+                          </button>
+                        )}
+                      </div>
+                      <p className="modal-description">{selectedRecipe.description}</p>
+
+                      <div className="recipe-details-content">
+                        <div className="ingredients-section">
+                          <h3><ShoppingCart size={18} /> Ingredienti</h3>
+                          <ul>
+                            {selectedRecipe.ingredients?.map((ing, i) => (
+                              <li key={i}>{ing}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="steps-section">
+                          <h3><BookOpen size={18} /> Preparazione</h3>
+                          <ol>
+                            {selectedRecipe.steps?.map((step, i) => (
+                              <li key={i}>{step}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {showTagSettings && (
+        <div className={`modal-overlay ${isMobile ? 'management-sheet-overlay' : ''}`} onClick={() => {
+          setShowTagSettings(false);
+          setShowTagDeleteConfirm(null);
+        }}>
+          <div className={isMobile ? 'management-sheet-content' : 'tag-modal'} onClick={e => e.stopPropagation()}>
+            {isMobile ? (
+              <div className="management-sheet-header">
+                <h3><Users size={24} /> Gestione Targhette</h3>
+                <button className="management-sheet-close" onClick={() => setShowTagSettings(false)}>
+                  <X size={24} />
+                </button>
+              </div>
+            ) : (
+              <div className="modal-header">
+                <div className="modal-title-with-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h3>Gestione Targhette</h3>
+                  <InfoTooltip text="Le targhette servono per firmare le tue ricette e assegnare i pasti. Qui puoi aggiungere nuovi nomi o rimuovere quelli esistenti." />
+                </div>
+                <button className="modal-close" onClick={() => {
+                  setShowTagSettings(false);
+                  setShowTagDeleteConfirm(null);
+                }}><X size={20} /></button>
+              </div>
+            )}
+            
+            <div className={isMobile ? 'management-sheet-body' : ''}>
+              <div className="tags-list-current">
+                {tags.map(tag => (
+                  <div key={tag.id} className="tag-item-editor">
+                    <div className="tag-badge-preview" style={{ backgroundColor: tag.color }}>
+                      {tag.label}
+                    </div>
+                    
+                    {showTagDeleteConfirm === tag.id ? (
+                      <div className="delete-confirm-inline">
+                        <button 
+                          className="confirm-btn-mini" 
+                          onClick={() => {
+                            onDeleteTag(tag.id);
+                            setShowTagDeleteConfirm(null);
+                          }}
+                          title="Conferma eliminazione"
+                        >
+                          <Check size={18} strokeWidth={3} />
+                        </button>
+                        <button 
+                          className="cancel-btn-mini" 
+                          onClick={() => setShowTagDeleteConfirm(null)}
+                          title="Annulla"
+                        >
+                          <X size={18} strokeWidth={3} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        className="tag-delete-btn" 
+                        onClick={() => setShowTagDeleteConfirm(tag.id)}
+                        disabled={tags.length <= 1}
+                        title="Elimina targhetta"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <form className="f-add-tag-form" onSubmit={handleCreateTag}>
+                <input 
+                  type="text" 
+                  placeholder="Nome persona..." 
+                  value={newTagLabel}
+                  onChange={e => setNewTagLabel(e.target.value)}
+                />
+                <button type="submit" className="f-add-tag-submit">
+                  <Plus size={24} />
+                </button>
+              </form>
+              
+              {!isMobile && <p className="modal-hint">Le targhette permettono di firmare le ricette e assegnare i pasti.</p>}
             </div>
           </div>
         </div>
       )}
-    </main>
+    </>
   );
 }

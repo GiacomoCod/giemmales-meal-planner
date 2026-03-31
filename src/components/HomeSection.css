@@ -22,18 +22,115 @@
   flex: 1;
 }
 
+/* HERO SECTION */
+.hero-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 40px;
+  padding: 20px 0;
+  margin-bottom: 20px;
+}
+
+.hero-text {
+  flex: 1;
+}
+
 .welcome-label {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   color: #718096;
   font-weight: 500;
+  display: block;
+  margin-bottom: 4px;
 }
 
 .welcome-name {
-  font-size: 2.5rem;
-  font-weight: 800;
+  font-size: 3.5rem;
+  font-weight: 900;
   color: #1a202c;
   margin: 0;
-  letter-spacing: -1px;
+  letter-spacing: -2px;
+  line-height: 1;
+}
+
+.hero-subtitle {
+  font-size: 1.15rem;
+  color: #64748b;
+  margin-top: 15px;
+  font-weight: 500;
+  max-width: 400px;
+}
+
+.hero-graphic {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.floating-house-wrapper {
+  position: relative;
+  width: 450px; /* Increased from 320px */
+  height: 450px; /* Increased from 320px */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.floating-house {
+  width: 100%;
+  height: auto;
+  z-index: 2;
+  animation: floatHouse 4s ease-in-out infinite;
+  filter: drop-shadow(0 20px 40px rgba(0,0,0,0.08)) brightness(1.03) contrast(1.05); /* Boosted to clear background edges */
+  /* Tightened mask to force edges to transparency sooner */
+  -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 35%, rgba(0,0,0,0) 75%);
+  mask-image: radial-gradient(circle, rgba(0,0,0,1) 35%, rgba(0,0,0,0) 75%);
+}
+
+.house-shadow {
+  width: 180px; /* Increased from 120px to match island base */
+  height: 18px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  filter: blur(12px);
+  position: absolute;
+  bottom: 60px; /* Adjusted position for larger island */
+  animation: shadowPulse 4s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes floatHouse {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-25px) rotate(1deg); }
+}
+
+@keyframes shadowPulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.3); opacity: 0.15; }
+}
+
+@media (max-width: 900px) {
+  .hero-container {
+    flex-direction: column-reverse;
+    text-align: center;
+    gap: 20px;
+  }
+  .hero-text {
+    width: 100%;
+  }
+  .welcome-name {
+    font-size: 2.5rem;
+  }
+  .hero-subtitle {
+    margin: 15px auto 0;
+  }
+  .floating-house-wrapper {
+    width: 240px;
+    height: 240px;
+  }
 }
 
 .home-grid {
@@ -626,7 +723,6 @@
     padding: 0 4px;
   }
   .welcome-label { font-size: 0.95rem; }
-  .welcome-name { font-size: 1.7rem; letter-spacing: -0.5px; }
   .home-grid { gap: 14px; }
 
   .house-calendar-card {

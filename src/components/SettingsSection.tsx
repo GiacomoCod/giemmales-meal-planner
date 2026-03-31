@@ -3,16 +3,37 @@ import { updateProfile, updatePassword as firebaseUpdatePassword } from 'firebas
 import type { User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Save, Lock, User as UserIcon, Camera, AlertTriangle, CheckCircle } from 'lucide-react';
+import { 
+  Save, 
+  Lock, 
+  User as UserIcon, 
+  Camera, 
+  AlertTriangle, 
+  CheckCircle, 
+  ChevronRight, 
+  ArrowLeft,
+  Palette,
+  ShieldCheck,
+  Calendar as CalendarIcon,
+  ShoppingCart,
+  BookOpen,
+  Sparkles,
+  Wallet
+} from 'lucide-react';
 import './SettingsSection.css';
 
 interface SettingsSectionProps {
   user: User;
   isGiemmale: boolean;
   activeProfileId: string;
+  visibleSections: Record<string, boolean>;
+  onToggleSection: (sectionId: string) => void;
+  isMobile: boolean;
 }
 
-export function SettingsSection({ user, isGiemmale, activeProfileId }: SettingsSectionProps) {
+export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSections, onToggleSection, isMobile }: SettingsSectionProps) {
+  const [activeView, setActiveView] = useState<'menu' | 'profile' | 'security' | 'customization' | 'privacy'>('menu');
+  
   const [houseName, setHouseName] = useState(isGiemmale ? 'Casa dei Giemmale' : (user.displayName || user.email?.split('@')[0] || ''));
   const [photoUrl, setPhotoUrl] = useState(user.photoURL || '');
   const [newPassword, setNewPassword] = useState('');
@@ -133,94 +154,222 @@ export function SettingsSection({ user, isGiemmale, activeProfileId }: SettingsS
     }
   };
 
-  return (
-    <div className="settings-section">
-      <div className="settings-card">
-        <div className="settings-header">
-          <h2>Gestione Account</h2>
-          <p>Personalizza la tua casa virtuale</p>
+  const renderProfileForm = () => (
+    <form className="settings-form" onSubmit={handleUpdateProfile}>
+      <div className="form-inner">
+        <h3>
+          <UserIcon size={20} className="settings-icon" />
+          Profilo della Casa
+        </h3>
+        
+        <div className="avatar-section">
+          <div 
+            className="settings-avatar-wrapper"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <img src={displayPicture} alt="Avatar" className="settings-avatar" />
+            <div className="avatar-overlay">
+              <Camera size={24} />
+              <span>Scegli foto</span>
+            </div>
+          </div>
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="image/jpeg, image/png, image/webp" 
+            style={{ display: 'none' }}
+            onChange={handleImageChange}
+          />
         </div>
 
-        {successMsg && (
-          <div className="settings-alert success">
-            <CheckCircle size={18} />
-            <span>{successMsg}</span>
-          </div>
-        )}
-        {errorMsg && (
-          <div className="settings-alert error">
-            <AlertTriangle size={18} />
-            <span>{errorMsg}</span>
-          </div>
-        )}
+        <div className="input-group">
+          <label>Nome della Casa</label>
+          <input 
+            type="text" 
+            placeholder="Nome..." 
+            value={houseName}
+            onChange={(e) => setHouseName(e.target.value)}
+            disabled={isGiemmale}
+          />
+          {isGiemmale && <small className="hint-text">Il nome di questa casa principale non è modificabile.</small>}
+        </div>
 
-        <div className="settings-grid">
-          <form className="settings-form" onSubmit={handleUpdateProfile}>
-            <h3>
-              <UserIcon size={20} className="settings-icon" />
-              Profilo della Casa
-            </h3>
-            
-            <div className="avatar-section">
-              <div 
-                className="settings-avatar-wrapper"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <img src={displayPicture} alt="Avatar" className="settings-avatar" />
-                <div className="avatar-overlay">
-                  <Camera size={24} />
-                  <span>Scegli foto</span>
-                </div>
+        <button type="submit" className="save-btn" disabled={loading}>
+          {loading ? 'Salvataggio...' : 'Salva Profilo'}
+          <Save size={18} />
+        </button>
+      </div>
+    </form>
+  );
+
+  const renderSecurityForm = () => (
+    <form className="settings-form" onSubmit={handleUpdatePassword}>
+      <div className="form-inner">
+        <h3>
+          <Lock size={20} className="settings-icon" />
+          Sicurezza
+        </h3>
+        
+        <div className="input-group">
+          <label>Nuova Password</label>
+          <input 
+            type="password" 
+            placeholder="Nuova password..." 
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+          <small className="hint-text">Se hai effettuato l'accesso da molto tempo, Firebase ti chiederà di ricollegarti prima di permetterti di aggiornarla.</small>
+        </div>
+
+        <button type="submit" className="save-btn" disabled={loading || !newPassword}>
+          {loading ? 'Salvataggio...' : 'Aggiorna Password'}
+          <Lock size={18} />
+        </button>
+      </div>
+    </form>
+  );
+
+  const renderCustomizationForm = () => (
+    <div className="settings-form customization">
+      <div className="form-inner">
+        <h3>
+          <Palette size={20} className="settings-icon" />
+          Personalizzazione Navbar
+        </h3>
+        <p className="section-desc">Scegli quali sezioni visualizzare nella barra di navigazione.</p>
+        
+        <div className="custom-toggle-list">
+          {[
+            { id: 'planner', label: 'Calendario Menù', icon: CalendarIcon },
+            { id: 'shopping', label: 'Lista Spesa', icon: ShoppingCart },
+            { id: 'recipes', label: 'Ricette', icon: BookOpen },
+            { id: 'cleaning', label: 'Pulizie del Menù', icon: Sparkles },
+            { id: 'finance', label: 'Finanza & Spese', icon: Wallet },
+          ].map((section) => (
+            <div key={section.id} className="custom-toggle-item">
+              <div className="toggle-item-info">
+                <section.icon size={20} className="toggle-icon" />
+                <span>{section.label}</span>
               </div>
-              <input 
-                ref={fileInputRef}
-                type="file" 
-                accept="image/jpeg, image/png, image/webp" 
-                style={{ display: 'none' }}
-                onChange={handleImageChange}
-              />
+              <label className="settings-switch">
+                <input 
+                  type="checkbox" 
+                  checked={visibleSections[section.id]} 
+                  onChange={() => onToggleSection(section.id)}
+                />
+                <span className="slider round"></span>
+              </label>
             </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
-            <div className="input-group">
-              <label>Nome della Casa</label>
-              <input 
-                type="text" 
-                placeholder="Nome..." 
-                value={houseName}
-                onChange={(e) => setHouseName(e.target.value)}
-                disabled={isGiemmale}
-              />
-              {isGiemmale && <small className="hint-text">Il nome di questa casa principale non è modificabile.</small>}
+  const renderPrivacyPolicy = () => (
+    <div className="settings-form privacy-policy">
+      <div className="form-inner">
+        <h3>
+          <ShieldCheck size={20} className="settings-icon privacy" />
+          Informativa sulla Privacy
+        </h3>
+        <div className="privacy-content">
+          <p><strong>Ultimo aggiornamento:</strong> 31 Marzo 2026</p>
+          
+          <section>
+            <h4>1. Raccolta dei Dati</h4>
+            <p>VibesPlanning raccoglie l'indirizzo email dell'utente esclusivamente per finalità di autenticazione e sincronizzazione dei dati (piani pasto, ricette e spese) tra i dispositivi dell'utente.</p>
+          </section>
+
+          <section>
+            <h4>2. Utilizzo di Firebase</h4>
+            <p>L'applicazione utilizza i servizi di <strong>Google Firebase</strong> per l'archiviazione sicura dei dati (Firestore) e l'autenticazione (Firebase Auth). I dati sono crittografati in transito e a riposo secondo gli standard di Google.</p>
+          </section>
+
+          <section>
+            <h4>3. Condivisione dei Dati</h4>
+            <p>Non vendiamo, scambiamo o trasferiamo in alcun modo le tue informazioni personali a terze parti.</p>
+          </section>
+
+          <section>
+            <h4>4. I Tuoi Diritti</h4>
+            <p>Puoi richiedere la cancellazione totale dei tuoi dati e del tuo account in qualsiasi momento contattando lo sviluppatore o tramite le funzioni di gestione profilo nell'app.</p>
+          </section>
+
+          <p className="privacy-footer">Utilizzando questa applicazione, acconsenti alla nostra informativa sulla privacy.</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`settings-section ${isMobile ? 'is-mobile' : ''}`}>
+      <div className="settings-card">
+        {(activeView === 'menu' || !isMobile) && (
+          <div className="settings-header">
+            <h2>Gestione Account</h2>
+            <p>Personalizza la tua casa virtuale</p>
+          </div>
+        )}
+
+        {isMobile && activeView !== 'menu' && (
+          <div className="settings-mobile-back" onClick={() => { setActiveView('menu'); setSuccessMsg(null); setErrorMsg(null); }}>
+             <div className="back-button-circle">
+                <ArrowLeft size={20} />
+             </div>
+          </div>
+        )}
+
+        {(successMsg || errorMsg) && (activeView !== 'menu' || !isMobile) && (
+          <div className={`settings-alert ${successMsg ? 'success' : 'error'}`}>
+            {successMsg ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+            <span>{successMsg || errorMsg}</span>
+          </div>
+        )}
+
+        <div className="settings-content-wrapper">
+          {/* MENU (Only for Mobile) */}
+          {isMobile && activeView === 'menu' && (
+            <div className="settings-menu-list">
+              <div className="settings-menu-item" onClick={() => setActiveView('profile')}>
+                 <div className="menu-item-left">
+                    <div className="menu-icon-bg profile"><UserIcon size={22} /></div>
+                    <span>Profilo & Casa</span>
+                 </div>
+                 <ChevronRight size={20} className="menu-chevron" />
+              </div>
+
+              <div className="settings-menu-item" onClick={() => setActiveView('security')}>
+                 <div className="menu-item-left">
+                    <div className="menu-icon-bg security"><Lock size={22} /></div>
+                    <span>Sicurezza</span>
+                 </div>
+                 <ChevronRight size={20} className="menu-chevron" />
+              </div>
+
+              <div className="settings-menu-item" onClick={() => setActiveView('customization')}>
+                 <div className="menu-item-left">
+                    <div className="menu-icon-bg customization"><Palette size={22} /></div>
+                    <span>Personalizzazione</span>
+                 </div>
+                 <ChevronRight size={20} className="menu-chevron" />
+              </div>
+
+              <div className="settings-menu-item" onClick={() => setActiveView('privacy')}>
+                 <div className="menu-item-left">
+                    <div className="menu-icon-bg privacy"><ShieldCheck size={22} /></div>
+                    <span>Privacy Policy</span>
+                 </div>
+                 <ChevronRight size={20} className="menu-chevron" />
+              </div>
             </div>
+          )}
 
-            <button type="submit" className="save-btn" disabled={loading}>
-              {loading ? 'Salvataggio...' : 'Salva Profilo'}
-              <Save size={18} />
-            </button>
-          </form>
-
-          <form className="settings-form" onSubmit={handleUpdatePassword}>
-            <h3>
-              <Lock size={20} className="settings-icon" />
-              Sicurezza
-            </h3>
-            
-            <div className="input-group">
-              <label>Nuova Password</label>
-              <input 
-                type="password" 
-                placeholder="Nuova password..." 
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-              <small className="hint-text">Se hai effettuato l'accesso da molto tempo, Firebase ti chiederà di ricollegarti prima di permetterti di aggiornarla.</small>
-            </div>
-
-            <button type="submit" className="save-btn" disabled={loading || !newPassword}>
-              {loading ? 'Salvataggio...' : 'Aggiorna Password'}
-              <Lock size={18} />
-            </button>
-          </form>
+          {/* DESKTOP GRID / MOBILE PANELS */}
+          {(!isMobile || activeView === 'profile') && renderProfileForm()}
+          {(!isMobile || activeView === 'security') && renderSecurityForm()}
+          {(!isMobile || activeView === 'customization') && renderCustomizationForm()}
+          {(!isMobile || activeView === 'privacy') && renderPrivacyPolicy()}
         </div>
       </div>
     </div>

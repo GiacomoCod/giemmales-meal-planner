@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, Sparkles, Home, ChevronDown, User as UserIcon, Check, X } from 'lucide-react';
+import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, Sparkles, Home, ChevronDown, User as UserIcon, Check, X, Wallet, Settings } from 'lucide-react';
 
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, limit, orderBy, documentId } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, limit, orderBy, documentId, getDoc } from 'firebase/firestore';
 import { parseISO } from 'date-fns';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -11,16 +11,20 @@ import { db, auth } from './firebase';
 import './App.css';
 
 import { SUGGESTIONS, DEFAULT_ROOM_TASKS, DUMMY_RECIPES } from './constants';
-import type { MealEntry, MealPlan, Recipe, CleaningLog, RoomTask, TaskUnit, TaskSettings, ShoppingItem, NotificationItem, Tag, CalendarEvent } from './types';
+import type { MealEntry, MealPlan, Recipe, CleaningLog, RoomTask, TaskUnit, TaskSettings, ShoppingItem, NotificationItem, Tag, CalendarEvent, Expense } from './types';
 import { PlannerSection } from './components/PlannerSection';
 import { ShoppingListSection } from './components/ShoppingListSection';
 import { RecipesSection } from './components/RecipesSection';
 import { CleaningSection } from './components/CleaningSection';
 import { SettingsSection } from './components/SettingsSection';
 import { HomeSection } from './components/HomeSection';
+import { FinanceSection } from './components/FinanceSection';
 import { Login } from './components/Login';
+import { useMediaQuery } from './hooks/useMediaQuery';
+import { BottomNavigation } from './components/BottomNavigation';
 
 function App() {
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const isGiemmale = user?.email === 'giemmale@homeplanner.local';
@@ -38,6 +42,14 @@ function App() {
   }, [user?.uid, user?.email, user?.displayName]);
 
   const [sessionReads, setSessionReads] = useState(0);
+
+  // Keep monitoring reads in background for future audit/control
+  useEffect(() => {
+    if (sessionReads > 0 && isGiemmale) {
+      console.debug(`[Analytics] Current Session Reads: ${sessionReads}`);
+    }
+  }, [sessionReads, isGiemmale]);
+
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   const colPath = useCallback((name: string) => 
@@ -56,7 +68,14 @@ function App() {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings'>('home');
+  const [visibleSections, setVisibleSections] = useState<Record<string, boolean>>({
+    planner: true,
+    shopping: true,
+    recipes: true,
+    cleaning: true,
+    finance: true
+  });
   const [recipes, setRecipes] = useState<Recipe[]>(DUMMY_RECIPES);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [isEditingRecipe, setIsEditingRecipe] = useState(false);
@@ -74,15 +93,64 @@ function App() {
   const [datePickerTaskId, setDatePickerTaskId] = useState<string | null>(null);
   const [customDate, setCustomDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [editingFrequency, setEditingFrequency] = useState<{value: number, unit: TaskUnit}>({value: 1, unit: 'settimane'});
+  const [suggestions, setSuggestions] = useState<{ text: string; icon: string; category?: 'supermarket' | 'home' | 'medicine' }[]>(SUGGESTIONS as any);
   const [showNotifDeleteConfirm, setShowNotifDeleteConfirm] = useState<string | null>(null);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [showUndoToast, setShowUndoToast] = useState(false);
+  const [isDeletingAllInProgress, setIsDeletingAllInProgress] = useState(false);
+  const undoTimeoutRef = useRef<any>(null);
   const hasSeededRef = useRef<Set<string>>(new Set());
   
   // Refs for closing dropdowns when clicking outside
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
+  const touchStartPos = useRef<{ x: number, y: number } | null>(null);
+
+  // Swipe Navigation Logic (Mobile Only)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isMobile || showNotifications) return;
+    const touch = e.touches[0];
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!isMobile || !touchStartPos.current || showNotifications) return;
+    
+    // Don't swipe if we are in an input/textarea
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('.settings-form')) {
+      touchStartPos.current = null;
+      return;
+    }
+
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartPos.current.x;
+    const deltaY = touch.clientY - touchStartPos.current.y;
+    touchStartPos.current = null;
+
+    // Must be horizontal and significant
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 75) {
+      const allTabs: Array<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings'> = 
+        ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
+      const activeTabs = allTabs.filter(t => t === 'home' || t === 'settings' || visibleSections[t]);
+      
+      const currentIndex = activeTabs.indexOf(activeTab);
+      if (currentIndex === -1) return;
+
+      if (deltaX > 0) {
+        // Swipe Right -> Go to Previous
+        const prevIndex = (currentIndex - 1 + activeTabs.length) % activeTabs.length;
+        setActiveTab(activeTabs[prevIndex]);
+      } else {
+        // Swipe Left -> Go to Next
+        const nextIndex = (currentIndex + 1) % activeTabs.length;
+        setActiveTab(activeTabs[nextIndex]);
+      }
+    }
+  };
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -90,15 +158,15 @@ function App() {
       if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
         setShowProfileDropdown(false);
       }
-      if (notifDropdownRef.current && !notifDropdownRef.current.contains(event.target as Node)) {
+      if (!isMobile && notifDropdownRef.current && !notifDropdownRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
-        setShowDeleteAllConfirm(false); // Reset confirmation state
+        setShowDeleteAllConfirm(false);
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [isMobile]);
 
   const handleDeleteAllNotifications = async () => {
     try {
@@ -114,6 +182,29 @@ function App() {
     }
   };
 
+  const handleDeleteAllWithUndo = () => {
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    
+    setIsDeletingAllInProgress(true);
+    setShowUndoToast(true);
+    
+    undoTimeoutRef.current = setTimeout(async () => {
+      await handleDeleteAllNotifications();
+      setIsDeletingAllInProgress(false);
+      setShowUndoToast(false);
+      undoTimeoutRef.current = null;
+    }, 5000);
+  };
+
+  const handleUndoDeleteAll = () => {
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
+    }
+    setIsDeletingAllInProgress(false);
+    setShowUndoToast(false);
+  };
+
   useEffect(() => {
     setMealPlan({});
     setShoppingList([]);
@@ -126,20 +217,61 @@ function App() {
     setTaskSettings({});
     setTags([]);
     setEvents([]);
+    setExpenses([]);
+
+    const fetchSettings = async () => {
+      try {
+        const snap = await getDoc(doc(db, `profiles/${activeProfile.id}/metadata`, 'settings'));
+        if (snap.exists() && snap.data().visibleSections) {
+          setVisibleSections(snap.data().visibleSections);
+        }
+      } catch (err) { }
+    };
+    fetchSettings();
   }, [activeProfile.id]);
 
-  const filteredSuggestions = SUGGESTIONS.filter(item =>
+  const handleToggleSection = async (sectionId: string) => {
+    const newVal = !visibleSections[sectionId];
+    const newSections = { ...visibleSections, [sectionId]: newVal };
+    setVisibleSections(newSections);
+    
+    try {
+      await setDoc(doc(db, `profiles/${activeProfile.id}/metadata`, 'settings'), {
+        visibleSections: newSections
+      }, { merge: true });
+    } catch (err) {
+      console.error("Error saving settings:", err);
+    }
+  };
+
+  const filteredSuggestions = suggestions.filter(item =>
     item.text.toLowerCase().includes(newItemText.toLowerCase()) && newItemText.length > 0
   );
 
   // Authentication Listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
+      console.log("[FIREBASE] Auth state changed:", u ? u.email : "No user");
       setUser(u);
       setIsAuthLoading(false);
+    }, (error) => {
+      console.error("[FIREBASE] Auth error:", error);
+      setIsAuthLoading(false);
     });
-    return () => unsub();
-  }, []);
+
+    // Failsafe timeout: if auth hasn't responded in 8 seconds, force stop loading
+    const timeout = setTimeout(() => {
+      if (isAuthLoading) {
+        console.warn("[FIREBASE] Auth initialization timeout. Proceeding to login/home.");
+        setIsAuthLoading(false);
+      }
+    }, 8000);
+
+    return () => {
+      unsub();
+      clearTimeout(timeout);
+    };
+  }, [isAuthLoading]);
 
   // One-time triggers for profile change (Migration & Cleanup)
   useEffect(() => {
@@ -217,6 +349,11 @@ function App() {
       setEvents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
     });
 
+    const unsubscribeExpenses = onSnapshot(query(collection(db, colPath('expenses')), orderBy('timestamp', 'desc'), limit(500)), (snapshot) => {
+      setSessionReads(prev => prev + snapshot.docs.length);
+      setExpenses(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Expense)));
+    });
+
     return () => {
       console.log("[FIREBASE] Pulizia listeners globali per:", activeProfile.id);
       unsubscribeShopping();
@@ -225,6 +362,7 @@ function App() {
       unsubscribeProfilePhoto();
       unsubscribeTags();
       unsubscribeEvents();
+      unsubscribeExpenses();
     };
   }, [activeProfile.id, colPath]); // REMOVED 'user' - ID and colPath are enough and more stable
 
@@ -873,12 +1011,202 @@ function App() {
     }
   };
 
+  const handleAddExpense = async (expense: Omit<Expense, 'id' | 'timestamp'>) => {
+    const id = generateId();
+    const newExpense: Expense = { ...expense, id, timestamp: Date.now() };
+    try {
+      await setDoc(doc(db, colPath('expenses'), id), newExpense);
+      
+      const payerName = tags.find(t => t.id === expense.paidBy)?.label ?? expense.paidBy;
+      let text = `💸 Spesa di ${expense.amount.toFixed(2)} € registrata da ${payerName}`;
+      
+      if (expense.splitWith && expense.splitWith.length > 0) {
+        const others = expense.splitWith
+          .filter(sid => sid !== expense.paidBy)
+          .map(sid => tags.find(t => t.id === sid)?.label ?? sid);
+        if (others.length > 0) {
+          text += ` (divisa con ${others.join(', ')})`;
+        }
+      }
+
+      const notifId = generateId();
+      await setDoc(doc(db, colPath('notifications'), notifId), {
+        text,
+        timestamp: Date.now(),
+        read: false
+      });
+    } catch (e) {
+      console.error('Error adding expense:', e);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, colPath('expenses'), id));
+    } catch (e) {
+      console.error('Error deleting expense:', e);
+    }
+  };
+
   if (isAuthLoading) return <div style={{display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center'}}>Caricamento...</div>;
   if (!user) return <Login />;
 
   return (
-    <div className="app-wrapper">
-      <nav className="top-nav">
+    <div 
+      className={`app-wrapper ${isMobile ? 'is-mobile' : ''}`}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* MOBILE MINI HEADER */}
+      {isMobile && (
+        <header className="mobile-header">
+          <div className="mobile-header-left">
+            <div 
+              className="nav-icon-wrapper" 
+              style={{ cursor: 'default' }}
+            >
+              {profileAvatar ? (
+                <img src={profileAvatar} alt="Profile" className="nav-icon-hover" style={{ opacity: 1, transform: 'scale(1)', position: 'static' }} />
+              ) : (
+                <Home className="nav-icon-main" size={24} />
+              )}
+            </div>
+            <h2 className="mobile-header-title">{activeTab.toUpperCase()}</h2>
+          </div>
+          <div className="mobile-header-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+             <button
+                className="notif-btn" 
+                onClick={() => setActiveTab(activeTab === 'settings' ? 'home' : 'settings')}
+                style={{ color: activeTab === 'settings' ? '#4f46e5' : '#4a5568' }}
+              >
+                <Settings size={22} strokeWidth={2.5} />
+              </button>
+             <div className="notif-wrapper" ref={notifDropdownRef}>
+                <button
+                  className={`notif-btn ${notifications.some(n => !n.read) ? 'has-unread' : ''}`}
+                  onClick={() => setShowNotifications(!showNotifications)}
+                >
+                  <Bell size={24} strokeWidth={2.5} />
+                  {notifications.some(n => !n.read) && <span className="notif-badge" />}
+                </button>
+             </div>
+          </div>
+        </header>
+      )}
+
+      {/* MOBILE NOTIFICATION OVERLAY */}
+      {isMobile && showNotifications && (
+        <div className="mobile-notif-overlay">
+          <div className="mobile-notif-header">
+            <div className="mobile-notif-header-title">
+              <Bell size={20} />
+              <h3>Notifiche</h3>
+            </div>
+            <div className="mobile-notif-header-actions">
+              <button 
+                className="mobile-notif-mark-read" 
+                onClick={async () => {
+                  for (const n of notifications) {
+                    if (!n.read) await setDoc(doc(db, colPath('notifications'), n.id), { ...n, read: true });
+                  }
+                }}
+              >
+                Segna lette
+              </button>
+              <button className="mobile-notif-close" onClick={() => setShowNotifications(false)}>
+                <X size={24} />
+              </button>
+            </div>
+          </div>
+          
+          <div className="mobile-notif-list">
+            {notifications.length === 0 || isDeletingAllInProgress ? (
+              <div className="mobile-notif-empty">
+                <Bell size={48} className="icon-muted" />
+                <p>{isDeletingAllInProgress ? 'Cancellazione in corso...' : 'Nessuna nuova notifica'}</p>
+              </div>
+            ) : (
+              notifications.map((n) => (
+                <div 
+                  key={n.id} 
+                  className={`mobile-notif-item ${!n.read ? 'unread' : ''}`}
+                  onClick={async () => {
+                    if (!n.read) {
+                      await setDoc(doc(db, colPath('notifications'), n.id), { ...n, read: true });
+                    }
+                  }}
+                >
+                  <div className="mobile-notif-content">
+                    <p className="mobile-notif-text">{n.text}</p>
+                    <span className="mobile-notif-time">{format(n.timestamp, 'HH:mm - d MMM', { locale: it })}</span>
+                  </div>
+                  
+                  {showNotifDeleteConfirm === n.id ? (
+                    <div className="mobile-notif-confirm-group">
+                      <button 
+                        className="mobile-notif-confirm-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteNotification(n.id, e);
+                          setShowNotifDeleteConfirm(null);
+                        }}
+                      >
+                        <Check size={20} strokeWidth={3} />
+                      </button>
+                      <button 
+                        className="mobile-notif-cancel-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowNotifDeleteConfirm(null);
+                        }}
+                      >
+                        <X size={20} strokeWidth={3} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      className="mobile-notif-delete"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowNotifDeleteConfirm(n.id);
+                      }}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          
+          {notifications.length > 0 && !isDeletingAllInProgress && (
+            <div className="mobile-notif-footer">
+              <button 
+                className="mobile-notif-clear-all"
+                onClick={handleDeleteAllWithUndo}
+              >
+                <Trash2 size={18} />
+                <span>Elimina tutte</span>
+              </button>
+            </div>
+          )}
+
+          {showUndoToast && (
+            <div className="undo-toast-mobile">
+              <div className="undo-toast-content">
+                <span>Notifiche eliminate</span>
+                <button className="undo-btn" onClick={handleUndoDeleteAll}>
+                  ANNULLA
+                </button>
+              </div>
+              <div className="undo-progress-bar" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isMobile && (
+        <nav className="top-nav">
         <div className="nav-container">
           <div className="nav-brand">
             <div className="profile-selector" ref={profileDropdownRef}>
@@ -913,7 +1241,7 @@ function App() {
                   <button 
                     className={`profile-option ${activeTab === 'settings' ? 'active' : ''}`}
                     onClick={() => {
-                      setActiveTab('settings');
+                      setActiveTab(activeTab === 'settings' ? 'home' : 'settings');
                       setShowProfileDropdown(false);
                     }}
                   >
@@ -935,35 +1263,22 @@ function App() {
           </div>
 
           <div className="nav-tabs">
-            <button
-              className={`nav-tab ${activeTab === 'planner' ? 'active' : ''}`}
-              onClick={() => setActiveTab('planner')}
-            >
-              <CalendarIcon size={20} strokeWidth={2.5} />
-              <span>Calendario Menù</span>
-            </button>
-            <button
-              className={`nav-tab ${activeTab === 'shopping' ? 'active' : ''}`}
-              onClick={() => setActiveTab('shopping')}
-            >
-              <ShoppingCart size={20} strokeWidth={2.5} />
-              <span>Lista Spesa</span>
-            </button>
-            <button
-              className={`nav-tab ${activeTab === 'recipes' ? 'active' : ''}`}
-              onClick={() => setActiveTab('recipes')}
-            >
-              <BookOpen size={20} strokeWidth={2.5} />
-              <span>Ricette</span>
-            </button>
-            <button
-              className={`nav-tab ${activeTab === 'cleaning' ? 'active' : ''}`}
-              onClick={() => setActiveTab('cleaning')}
-            >
-              <Sparkles size={20} strokeWidth={2.5} />
-              <span>Pulizie</span>
-            </button>
-
+            {[
+              { id: 'planner', label: 'Calendario Menù', icon: CalendarIcon },
+              { id: 'shopping', label: 'Lista Spesa', icon: ShoppingCart },
+              { id: 'recipes', label: 'Ricette', icon: BookOpen },
+              { id: 'cleaning', label: 'Pulizie', icon: Sparkles },
+              { id: 'finance', label: 'Finanze', icon: Wallet },
+            ].filter(t => visibleSections[t.id]).map(tab => (
+              <button
+                key={tab.id}
+                className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id as any)}
+              >
+                <tab.icon size={20} strokeWidth={2.5} />
+                <span>{tab.label}</span>
+              </button>
+            ))}
           </div>
 
           <div className="nav-spacer">
@@ -1084,10 +1399,13 @@ function App() {
           </div>
         </div>
       </nav>
+      )}
 
-      <div className="layout">
+      <div className={`layout ${isMobile ? 'is-mobile' : ''}`}>
+        <div key={activeTab} className={`layout-content ${isMobile ? 'mobile-page-transition' : ''}`}>
           {activeTab === 'home' && (
             <HomeSection
+              isMobile={isMobile}
               userName={activeProfile.name}
               mealPlan={mealPlan}
               shoppingList={shoppingList}
@@ -1099,7 +1417,8 @@ function App() {
               tags={tags}
               onAddEvent={handleAddEvent}
               onDeleteEvent={handleDeleteEvent}
-              onNavigate={(tab) => setActiveTab(tab)}
+              onNavigate={(tab) => setActiveTab(tab as 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings')}
+              expenses={expenses}
               onQuickAction={(action) => {
                 if (action === 'add-shopping') setActiveTab('shopping');
                 if (action === 'add-recipe') {
@@ -1120,6 +1439,7 @@ function App() {
 
           {activeTab === 'planner' && (
           <PlannerSection
+            isMobile={isMobile}
             currentMonth={currentMonth}
             prevMonth={prevMonth}
             nextMonth={nextMonth}
@@ -1145,6 +1465,7 @@ function App() {
         )}
         {activeTab === 'shopping' && (
           <ShoppingListSection
+            isMobile={isMobile}
             shoppingList={shoppingList}
             newItemText={newItemText}
             setNewItemText={setNewItemText}
@@ -1155,10 +1476,19 @@ function App() {
             handleAddSuggestion={handleAddSuggestion}
             toggleItem={toggleItem}
             deleteItem={deleteItem}
+            suggestions={suggestions}
+            onAddCustomSuggestion={(text, cat, icon) => {
+              const newSug = { text, category: cat, icon: icon || '📦' };
+              setSuggestions(prev => [...prev, newSug]);
+            }}
+            onDeleteCustomSuggestion={(text) => {
+              setSuggestions(prev => prev.filter(s => s.text !== text));
+            }}
           />
         )}
         {activeTab === 'recipes' && (
           <RecipesSection
+            isMobile={isMobile}
             recipes={recipes}
             handleRecipeClick={handleRecipeClick}
             handleAddNewRecipe={handleAddNewRecipe}
@@ -1171,6 +1501,9 @@ function App() {
             setTempRecipe={setTempRecipe}
             handleImageUpload={handleImageUpload}
             handleSaveRecipe={handleSaveRecipe}
+            tags={tags}
+            onAddTag={handleAddTag}
+            onDeleteTag={handleDeleteTag}
           />
         )}
         {activeTab === 'cleaning' && (
@@ -1208,31 +1541,42 @@ function App() {
             editingFrequency={editingFrequency}
             setEditingFrequency={setEditingFrequency}
             handleUpdateTaskFrequency={handleUpdateTaskFrequency}
+            isMobile={isMobile}
           />
         )}
+        {activeTab === 'finance' && (
+          <div className="main-content finance-section-container">
+            <FinanceSection
+              expenses={expenses}
+              tags={tags}
+              onAddExpense={handleAddExpense}
+              onDeleteExpense={handleDeleteExpense}
+              onAddTag={handleAddTag}
+              onDeleteTag={handleDeleteTag}
+              isMobile={isMobile}
+            />
+          </div>
+        )}
         {activeTab === 'settings' && (
-          <SettingsSection user={user} isGiemmale={isGiemmale} activeProfileId={activeProfile.id} />
+          <SettingsSection 
+            user={user} 
+            isGiemmale={isGiemmale} 
+            activeProfileId={activeProfile.id} 
+            visibleSections={visibleSections}
+            onToggleSection={handleToggleSection}
+            isMobile={isMobile}
+          />
         )}
       </div>
+      </div>
 
-      {isGiemmale && (
-        <div style={{
-          position: 'fixed',
-          bottom: '10px',
-          right: '80px',
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          color: '#4ade80',
-          padding: '4px 10px',
-          borderRadius: '50px',
-          fontSize: '11px',
-          zIndex: 9999,
-          pointerEvents: 'none',
-          fontFamily: 'monospace',
-          border: '1px solid #4ade80',
-          boxShadow: '0 0 10px rgba(74, 222, 128, 0.2)'
-        }}>
-          ● Session Reads: {sessionReads}
-        </div>
+      {isMobile && (
+        <BottomNavigation 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+          notificationsCount={notifications.filter(n => !n.read).length}
+          visibleSections={visibleSections}
+        />
       )}
     </div>
   );

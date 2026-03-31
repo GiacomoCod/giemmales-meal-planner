@@ -23,6 +23,7 @@ export type Recipe = {
   image: string;
   ingredients?: string[];
   steps?: string[];
+  authorId?: string;
 };
 
 export type CleaningLog = {
@@ -70,4 +71,17 @@ export type CalendarEvent = {
   startTime?: string;
   endTime?: string;
   color?: string;
+};
+
+export type ExpenseCategory = 'supermarket' | 'home' | 'medicine' | 'repayment' | 'other';
+
+export type Expense = {
+  id: string;
+  amount: number;           // importo in €
+  description: string;      // descrizione libera
+  category: ExpenseCategory;
+  date: string;             // yyyy-MM-dd
+  timestamp: number;
+  paidBy: string;           // id del tag persona (es. 'ale', 'giem')
+  splitWith?: string[];     // id dei tag persone con cui dividere (se vuoto o assente, divisa con tutti)
 };

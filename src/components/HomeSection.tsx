@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  Calendar, 
-  ShoppingCart, 
-  BookOpen, 
-  Sparkles, 
-  Plus, 
-  Utensils, 
+import {
+  Calendar,
+  ShoppingCart,
+  BookOpen,
+  Sparkles,
+  Plus,
+  Utensils,
   ArrowRight,
   ClipboardList,
   ChevronRight,
@@ -14,16 +14,18 @@ import {
   Clock,
   Store,
   Home as HomeIcon,
-  Pill
+  Pill,
+  Wallet
 } from 'lucide-react';
 import { format, startOfWeek, addDays, isSameDay, addWeeks } from 'date-fns';
 import { it } from 'date-fns/locale';
 import './HomeSection.css';
 import { MEALS, ROOMS } from '../constants';
-import type { MealPlan, ShoppingItem, Recipe, RoomTask, CleaningLog, TaskSettings, CalendarEvent, Tag } from '../types';
-import { InfoTooltip } from './InfoTooltip';
+import type { MealPlan, ShoppingItem, Recipe, RoomTask, CleaningLog, TaskSettings, CalendarEvent, Tag, Expense } from '../types';
+import houseImg from '../assets/house-3d.png';
 
 interface HomeSectionProps {
+  isMobile?: boolean;
   userName: string;
   mealPlan: MealPlan;
   shoppingList: ShoppingItem[];
@@ -35,11 +37,13 @@ interface HomeSectionProps {
   tags: Tag[];
   onAddEvent: (event: Omit<CalendarEvent, 'id'>) => void;
   onDeleteEvent: (id: string) => void;
-  onNavigate: (tab: 'planner' | 'shopping' | 'recipes' | 'cleaning') => void;
+  onNavigate: (tab: 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance') => void;
   onQuickAction: (action: string) => void;
+  expenses: Expense[];
 }
 
 export const HomeSection: React.FC<HomeSectionProps> = ({
+  isMobile,
   userName,
   mealPlan,
   shoppingList,
@@ -52,7 +56,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   onAddEvent,
   onDeleteEvent,
   onNavigate,
-  onQuickAction
+  onQuickAction,
+  expenses
 }) => {
   const [showEventForm, setShowEventForm] = useState(false);
   const [newEventText, setNewEventText] = useState('');
@@ -70,7 +75,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   const getNextCleaningDate = (taskName: string, roomId: string) => {
     const logs = cleaningLogs.filter(l => l.roomId === roomId && l.taskType === taskName);
     const settings = taskSettings[taskName] || { value: 1, unit: 'settimane' };
-    
+
     let totalDays = settings.value;
     if (settings.unit === 'settimane') totalDays *= 7;
     else if (settings.unit === 'mesi') totalDays *= 30;
@@ -111,15 +116,32 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   const pendingHome = shoppingList.filter(item => !item.checked && item.category === 'home').length;
   const pendingMed = shoppingList.filter(item => !item.checked && item.category === 'medicine').length;
 
+  // Finance: totale spese mese corrente
+  const monthFinanceTotal = expenses.reduce((sum, e) => {
+    const d = new Date(e.date);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+      ? sum + e.amount
+      : sum;
+  }, 0);
+
   return (
     <div className="home-container">
       <header className="home-header">
-        <div className="welcome-section" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <div>
-            <span className="welcome-label">Bentornato,</span>
-            <h1 className="welcome-name">{userName}</h1>
+        <div className="welcome-section">
+          <div className="hero-container">
+            <div className="hero-text">
+              <span className="welcome-label">Bentornat*,</span>
+              <h1 className="welcome-name">{userName}</h1>
+              <p className="hero-subtitle">Organizza al meglio la tua casetta</p>
+            </div>
+            <div className="hero-graphic">
+              <div className="floating-house-wrapper">
+                <img src={houseImg} alt="3D House" className="floating-house" />
+                <div className="house-shadow"></div>
+              </div>
+            </div>
           </div>
-          <InfoTooltip text="Questa è la tua Dashboard. Qui trovi il nuovo Calendario della Casa e un riassunto delle attività." position="right" />
         </div>
       </header>
 
@@ -130,7 +152,9 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             <div className="header-left">
               <Calendar className="icon-vibrant-indigo" size={24} />
               <div className="header-title-nav">
-                <h3 className="card-title">Calendario della Casa</h3>
+                <h3 className="card-title">
+                  Calendario della Casa
+                </h3>
                 <div className="calendar-nav-arrows">
                   <div className="nav-btn-group">
                     <button className="nav-arrow-btn" onClick={() => setOffsetWeeks(prev => prev - 1)}>
@@ -161,56 +185,56 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               </div>
             </div>
             <button className="add-event-btn" onClick={() => setShowEventForm(true)}>
-              <Plus size={18} />
-              <span>Nuovo Evento</span>
+              <Plus size={isMobile ? 20 : 18} />
+              {!isMobile && <span>Nuovo Evento</span>}
             </button>
           </div>
 
           <div className="calendar-scroll-wrapper">
-          <div className="house-calendar-grid">
-            {weekDays.map(day => {
-              const dateKey = format(day, 'yyyy-MM-dd');
-              const dayEvents = events.filter(e => e.date === dateKey);
-              const dayTasks = roomTasks.filter(t => getNextCleaningDate(t.taskName, t.roomId) === dateKey);
+            <div className="house-calendar-grid">
+              {weekDays.map(day => {
+                const dateKey = format(day, 'yyyy-MM-dd');
+                const dayEvents = events.filter(e => e.date === dateKey);
+                const dayTasks = roomTasks.filter(t => getNextCleaningDate(t.taskName, t.roomId) === dateKey);
 
-              const isToday = isSameDay(day, new Date());
+                const isToday = isSameDay(day, new Date());
 
-              return (
-                <div key={dateKey} className={`calendar-day-col ${isToday ? 'is-today' : ''}`}>
-                  <div className="day-header">
-                    <span className="day-name">{format(day, 'EEE', { locale: it })}</span>
-                    <span className="day-number">{format(day, 'd')}</span>
-                  </div>
-                  <div className="day-events">
-                    {dayEvents.map(event => (
-                      <div key={event.id} className="calendar-event-item" style={{ borderLeftColor: event.color }}>
-                        <div className="event-info">
-                          {(event.startTime || event.endTime) && (
-                            <span className="event-time">
-                              {event.startTime}{event.endTime ? ` - ${event.endTime}` : ''}
-                            </span>
-                          )}
-                          <span className="event-text">{event.text}</span>
+                return (
+                  <div key={dateKey} className={`calendar-day-col ${isToday ? 'is-today' : ''}`}>
+                    <div className="day-header">
+                      <span className="day-name">{format(day, 'EEE', { locale: it })}</span>
+                      <span className="day-number">{format(day, 'd')}</span>
+                    </div>
+                    <div className="day-events">
+                      {dayEvents.map(event => (
+                        <div key={event.id} className="calendar-event-item" style={{ borderLeftColor: event.color }}>
+                          <div className="event-info">
+                            {(event.startTime || event.endTime) && (
+                              <span className="event-time">
+                                {event.startTime}{event.endTime ? ` - ${event.endTime}` : ''}
+                              </span>
+                            )}
+                            <span className="event-text">{event.text}</span>
+                          </div>
+                          <button className="event-delete-btn" onClick={() => onDeleteEvent(event.id)}>
+                            <X size={12} />
+                          </button>
                         </div>
-                        <button className="event-delete-btn" onClick={() => onDeleteEvent(event.id)}>
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                    {dayTasks.map((task, i) => {
-                      const room = ROOMS.find(r => r.id === task.roomId);
-                      return (
-                        <div key={`task-${i}`} className="calendar-task-item">
-                          <Sparkles size={10} />
-                          <span style={{ fontSize: '11px' }}>{task.taskName} {room ? `(${room.label})` : ''}</span>
-                        </div>
-                      );
-                    })}
+                      ))}
+                      {dayTasks.map((task, i) => {
+                        const room = ROOMS.find(r => r.id === task.roomId);
+                        return (
+                          <div key={`task-${i}`} className="calendar-task-item">
+                            <Sparkles size={10} />
+                            <span style={{ fontSize: '11px' }}>{task.taskName} {room ? `(${room.label})` : ''}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
           </div>
         </section>
 
@@ -262,9 +286,9 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         {/* Quick Organizers */}
         <div className="home-card card-medium glass highlight-blue">
           <div className="card-content">
-              <h3 className="card-title">Cosa vuoi organizzare?</h3>
+            <h3 className="card-title">Cosa vuoi organizzare?</h3>
             <div className="action-buttons">
-              <button 
+              <button
                 className="action-btn"
                 onClick={() => onQuickAction('add-shopping')}
               >
@@ -273,7 +297,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 </div>
                 <span>Spesa</span>
               </button>
-              <button 
+              <button
                 className="action-btn"
                 onClick={() => onQuickAction('add-recipe')}
               >
@@ -351,6 +375,29 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             <span className="shortcut-label">Gestisci Pulizie</span>
           </div>
         </div>
+
+        {/* Finance Widget */}
+        <div className="home-card card-small glass" onClick={() => onNavigate('finance')} style={{ cursor: 'pointer', borderTop: '3px solid #6ee7b7' }}>
+          <div className="card-header" style={{ marginBottom: 12 }}>
+            <Wallet size={20} style={{ color: '#059669' }} />
+            <span className="card-tag">Finanze</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.8rem', fontWeight: 700, color: '#059669' }}>
+              questo mese
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ padding: '10px 14px', background: '#ecfdf5', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#065f46' }}>Totale spese</span>
+              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#059669' }}>
+                {monthFinanceTotal.toFixed(2).replace('.', ',')} €
+              </span>
+            </div>
+            <div style={{ padding: '8px 14px', background: '#f8fafc', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>{expenses.filter(e => { const d = new Date(e.date); const n = new Date(); return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth(); }).length} spese registrate</span>
+              <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* NEW EVENT MODAL */}
@@ -366,33 +413,33 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 <X size={20} />
               </button>
             </div>
-            
+
             <form className="add-event-form-full" onSubmit={handleAddEventSubmit}>
               <div className="form-group">
                 <label>Descrizione evento</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="Esempio: Pizza di gruppo, Visita tecnici..."
                   value={newEventText}
                   onChange={e => setNewEventText(e.target.value)}
                   autoFocus
                 />
               </div>
-              
+
               <div className="form-row">
                 <div className="form-group">
                   <label>Data</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={newEventDate}
                     onChange={e => setNewEventDate(e.target.value)}
                   />
                 </div>
                 <div className="form-group" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
                   <label className="checkbox-label" style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={showEndTime} 
+                    <input
+                      type="checkbox"
+                      checked={showEndTime}
                       onChange={e => setShowEndTime(e.target.checked)}
                       style={{ width: '18px', height: '18px' }}
                     />
@@ -406,8 +453,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   <label>Orario inizio</label>
                   <div style={{ position: 'relative' }}>
                     <Clock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                    <input 
-                      type="time" 
+                    <input
+                      type="time"
                       style={{ paddingLeft: '38px' }}
                       value={newEventTime}
                       onChange={e => setNewEventTime(e.target.value)}
@@ -419,8 +466,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                     <label>Orario fine</label>
                     <div style={{ position: 'relative' }}>
                       <Clock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#ef4444' }} />
-                      <input 
-                        type="time" 
+                      <input
+                        type="time"
                         style={{ paddingLeft: '38px', borderColor: '#ef4444' }}
                         value={newEventEndTime}
                         onChange={e => setNewEventEndTime(e.target.value)}

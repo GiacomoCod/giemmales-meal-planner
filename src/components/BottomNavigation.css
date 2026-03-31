@@ -1,0 +1,119 @@
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  /* Removed fixed height to let padding handle centering */
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.05);
+  z-index: 1000;
+  padding: 12px 10px calc(12px + env(safe-area-inset-bottom)) 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.bottom-nav-container {
+  display: flex;
+  width: 100%;
+  max-width: 500px;
+  position: relative; /* For indicator */
+}
+
+.nav-indicator {
+  position: absolute;
+  top: 50%; /* Center vertically */
+  left: 0;
+  height: 48px; /* Fixed height for the pill */
+  margin-top: -24px; /* Half of height to truly center */
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-indicator::after {
+  content: '';
+  width: calc(100% - 12px); /* Leave 6px margin on each side */
+  height: 100%;
+  background: rgba(99, 102, 241, 0.12); /* Single Pastel Indigo layer */
+  border-radius: 16px;
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  z-index: 1; /* Above indicator */
+}
+
+.bottom-nav-item.active {
+  color: #4f46e5;
+  /* Removed translateY for better vertical symmetry */
+}
+
+/* Removed the ::after dot logic */
+.bottom-nav-item.active::after {
+  display: none;
+}
+
+.icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
+}
+
+.bottom-nav-item.active .icon-wrapper {
+  transform: scale(1.1);
+}
+
+.bottom-nav-label {
+  font-size: 0.65rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.bottom-nav-item.active .bottom-nav-label {
+  opacity: 1;
+  font-weight: 850;
+}
+
+.bottom-nav-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  background: #f56565;
+  border-radius: 50%;
+  border: 2px solid white;
+}

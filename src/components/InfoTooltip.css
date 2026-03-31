@@ -36,17 +36,18 @@
   text-align: left;
 }
 
-/* Positions */
+/* Positions — Desktop only */
 .info-tooltip.pos-bottom {
   top: calc(100% + 10px);
-  left: 0;
-  transform: translateY(5px);
+  left: 50%;
+  transform: translateX(-50%) translateY(5px);
 }
 .info-tooltip.pos-bottom::before {
   content: '';
   position: absolute;
   top: -6px;
-  left: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
   border-bottom: 6px solid #1e293b;
@@ -54,14 +55,15 @@
 
 .info-tooltip.pos-top {
   bottom: calc(100% + 10px);
-  left: 0;
-  transform: translateY(-5px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-5px);
 }
 .info-tooltip.pos-top::before {
   content: '';
   position: absolute;
   bottom: -6px;
-  left: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
   border-top: 6px solid #1e293b;
@@ -83,19 +85,224 @@
   border-right: 6px solid #1e293b;
 }
 
-.info-tooltip-wrapper:hover .info-tooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translate(0, 0); /* Adjusted to handle different base transforms */
+/* Only show hover tooltip on desktop */
+@media (min-width: 769px) {
+  .info-tooltip-wrapper:hover .info-tooltip {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .info-tooltip-wrapper:hover .info-tooltip.pos-right {
+    transform: translate(0, -50%);
+  }
+
+  .info-tooltip-wrapper:hover .info-tooltip.pos-top,
+  .info-tooltip-wrapper:hover .info-tooltip.pos-bottom {
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
-/* Special Case for pos-right hover */
-.info-tooltip-wrapper:hover .info-tooltip.pos-right {
-  transform: translate(0, -50%);
+/* On mobile, the tooltip is hidden (we use the modal instead) */
+@media (max-width: 768px) {
+  .info-tooltip {
+    display: none !important;
+  }
+  
+  .info-icon-container {
+    padding: 6px;
+    margin: -6px;
+    border-radius: 50%;
+    transition: background 0.2s;
+  }
+  
+  .info-icon-container:active {
+    background: rgba(226, 232, 240, 0.5);
+  }
 }
 
-/* Special Case for pos-top/bottom hover */
-.info-tooltip-wrapper:hover .info-tooltip.pos-top,
-.info-tooltip-wrapper:hover .info-tooltip.pos-bottom {
-  transform: translateY(0);
+/* Mobile Modal Styles — PREMIUM GLASS & CLAY */
+.info-mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* Modern mobile-friendly unit */
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000; /* Extremely high to stay above everything */
+  padding: 24px;
+  animation: fadeIn 0.4s ease;
+}
+
+.info-mobile-modal {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  width: 100%;
+  max-width: 340px;
+  max-height: 90dvh; /* Ensure it fits on small screens */
+  border-radius: 36px;
+  padding: 40px 30px;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 
+    0 25px 60px -12px rgba(0, 0, 0, 0.15),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: springEntry 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Modal Internal Glows */
+.info-modal-glow-1 {
+  position: absolute;
+  top: -20%;
+  right: -20%;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.info-modal-glow-2 {
+  position: absolute;
+  bottom: -20%;
+  left: -20%;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.info-mobile-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.9);
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  z-index: 10;
+  transition: transform 0.2s;
+}
+
+.info-mobile-close:active {
+  transform: scale(0.9);
+}
+
+.info-mobile-header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  text-align: center;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.info-icon-3d-wrapper {
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  padding: 20px;
+  box-sizing: content-box;
+  border-radius: 28px;
+  box-shadow: 
+    0 15px 30px rgba(59, 130, 246, 0.3),
+    inset 0 4px 8px rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.info-modal-icon {
+  color: white;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+}
+
+.info-mobile-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #1e293b;
+  letter-spacing: -0.5px;
+}
+
+.info-mobile-body {
+  position: relative;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #475569;
+  text-align: center;
+  margin-bottom: 32px;
+  z-index: 1;
+  font-weight: 500;
+  overflow-y: auto; /* Handle long text */
+  max-height: 40vh; /* Limits text height to keep modal balanced */
+  padding: 0 4px;
+}
+
+/* Custom scrollbar for subtle look */
+.info-mobile-body::-webkit-scrollbar {
+  width: 4px;
+}
+.info-mobile-body::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.1);
+  border-radius: 10px;
+}
+
+/* CLAY-STYLE BUTTON */
+.info-mobile-ok {
+  position: relative;
+  width: 100%;
+  padding: 18px;
+  border-radius: 20px;
+  border: none;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  color: white;
+  font-weight: 800;
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 
+    0 12px 24px rgba(30, 41, 59, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.2);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.info-mobile-ok:active {
+  transform: scale(0.94);
+  box-shadow: 0 6px 12px rgba(30, 41, 59, 0.2);
+}
+
+@keyframes springEntry {
+  0% { 
+    opacity: 0; 
+    transform: scale(0.8) translateY(40px); 
+  }
+  100% { 
+    opacity: 1; 
+    transform: scale(1) translateY(0); 
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

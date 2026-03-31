@@ -1,0 +1,164 @@
+/* ─── Recipes Hero Header ────────────────── */
+.recipes-hero {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 24px;
+  padding: 30px 40px;
+  margin-top: 20px; /* Space from navbar */
+  margin-bottom: 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+}
+
+.recipes-hero-text {
+  flex: 1;
+  z-index: 2;
+}
+
+.recipes-welcome-label {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #f97316; /* Orange theme for recipes */
+  background: rgba(249, 115, 22, 0.1);
+  padding: 6px 14px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  letter-spacing: 0.05em;
+}
+
+.recipes-hero-header-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.recipes-hero-page-title {
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: #1a202c;
+  margin: 0;
+  letter-spacing: -1.5px;
+}
+
+.recipes-hero-page-subtitle {
+  font-size: 1.1rem;
+  color: #64748b;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+.recipes-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+/* Graphic Area with Designer's Mask */
+.recipes-hero-graphic {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  z-index: 1;
+}
+
+.floating-book-wrapper {
+  position: relative;
+  width: 280px; /* Open book needs horizontal space */
+  pointer-events: none;
+}
+
+.floating-book {
+  width: 100%;
+  height: auto;
+  animation: floatBook 4.5s ease-in-out infinite;
+  /* Designer's Mask Trick */
+  -webkit-mask-image: radial-gradient(circle, black 45%, transparent 78%);
+  mask-image: radial-gradient(circle, black 45%, transparent 78%);
+  filter: brightness(1.02) contrast(1.02);
+}
+
+@keyframes floatBook {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-12px) rotate(1deg); }
+}
+
+.book-shadow {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 15px;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0) 70%);
+  border-radius: 50%;
+  animation: bookShadowPulse 4.5s ease-in-out infinite;
+  z-index: -1;
+}
+
+@keyframes bookShadowPulse {
+  0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.4; }
+  50% { transform: translateX(-50%) scale(0.9); opacity: 0.2; }
+}
+
+/* Tag Settings and Tooltip specific styles for Hero */
+.recipes-hero-tag-trigger {
+  padding: 10px 18px;
+  background: white;
+  border: 1.5px solid #edf2f7;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #4a5568;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+}
+
+.recipes-hero-tag-trigger:hover {
+  border-color: #f97316;
+  color: #f97316;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(249, 115, 22, 0.1);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .recipes-hero {
+    flex-direction: column;
+    padding: 30px 20px;
+    text-align: center;
+    gap: 20px;
+  }
+  
+  .recipes-hero-header-content {
+    justify-content: center;
+  }
+  
+  .recipes-hero-page-title {
+    font-size: 2.2rem;
+  }
+  
+  .recipes-hero-actions {
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .floating-book-wrapper {
+    width: 220px;
+  }
+}
