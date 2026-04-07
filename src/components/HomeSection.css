@@ -47,7 +47,7 @@
 .welcome-name {
   font-size: 3.5rem;
   font-weight: 900;
-  color: #1a202c;
+  color: var(--text-main);
   margin: 0;
   letter-spacing: -2px;
   line-height: 1;
@@ -55,7 +55,7 @@
 
 .hero-subtitle {
   font-size: 1.15rem;
-  color: #64748b;
+  color: var(--text-muted);
   margin-top: 15px;
   font-weight: 500;
   max-width: 400px;
@@ -160,14 +160,15 @@
 }
 
 .home-card.glass {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface-color);
   backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
 }
 
 .card-full-width {
   grid-column: 1 / -1;
-  background: white;
+  background: var(--surface-color);
 }
 
 .card-medium {
@@ -220,10 +221,10 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #f8fafc;
+  background-color: var(--surface-subtle);
   padding: 4px 10px;
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
@@ -246,8 +247,8 @@
 }
 
 .nav-arrow-btn:hover {
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--surface-hover);
+  color: var(--text-main);
 }
 
 .current-week-label {
@@ -260,13 +261,13 @@
 }
 
 .nav-today-btn {
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
   padding: 4px 12px;
   border-radius: 8px;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #4f46e5;
+  color: var(--accent-primary);
   cursor: pointer;
   margin-left: 4px;
   transition: all 0.2s ease;
@@ -309,11 +310,11 @@
 .calendar-day-col {
   display: flex;
   flex-direction: column;
-  background: rgba(248, 250, 252, 0.4);
+  background: var(--surface-subtle);
   border-radius: 20px;
   padding: 16px 12px;
   transition: all 0.3s ease;
-  border: 1px solid transparent;
+  border: 1px solid var(--border-color);
   min-height: 280px;
   min-width: 150px;
 }
@@ -328,8 +329,8 @@
 }
 
 .calendar-day-col.is-today {
-  background: rgba(79, 70, 229, 0.04);
-  border: 1px solid rgba(79, 70, 229, 0.12);
+  background: var(--surface-active);
+  border: 1px solid var(--accent-primary);
 }
 
 .calendar-day-col.is-today .day-number {
@@ -355,7 +356,7 @@
 .day-number {
   font-size: 1.1rem;
   font-weight: 800;
-  color: #1e293b;
+  color: var(--text-main);
   width: 36px;
   height: 36px;
   display: flex;
@@ -373,12 +374,12 @@
 }
 
 .calendar-event-item {
-  background: white;
+  background: var(--surface-color);
   padding: 8px 10px;
   border-radius: 12px;
   font-size: 0.85rem;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-  border-left: 4px solid #e2e8f0;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -405,7 +406,7 @@
 
 .event-text {
   font-weight: 600;
-  color: #334155;
+  color: var(--text-main);
   line-height: 1.2;
   word-break: break-word;
 }
@@ -460,14 +461,14 @@
 .card-title {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #1a202c;
+  color: var(--text-main);
   margin: 0;
 }
 
 .card-label {
   font-size: 1rem;
   font-weight: 600;
-  color: #4a5568;
+  color: var(--text-muted);
   margin-top: 12px;
   text-align: center;
 }
@@ -477,7 +478,7 @@
   justify-content: space-between;
   align-items: center;
   margin-top: 20px;
-  color: #4a5568;
+  color: var(--text-muted);
   font-weight: 600;
   font-size: 0.9rem;
 }
@@ -632,15 +633,19 @@
   align-items: center;
   gap: 8px;
   padding: 16px;
-  background: white;
+  background: var(--surface-color);
   border-radius: 20px;
-  border: none;
+  border: 1px solid var(--border-color);
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+  box-shadow: var(--shadow-sm);
 }
-.action-btn:hover { background: #f7fafc; transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.06); }
-.action-btn span { font-weight: 600; font-size: 0.85rem; color: #4a5568; }
+.action-btn:hover { 
+  background: var(--surface-hover); 
+  transform: translateY(-2px); 
+  box-shadow: var(--shadow-md); 
+}
+.action-btn span { font-weight: 600; font-size: 0.85rem; color: var(--text-main); }
 .action-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; }
 .action-icon.blue { background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); }
 .action-icon.purple { background: linear-gradient(135deg, #9f7aea 0%, #805ad5 100%); }

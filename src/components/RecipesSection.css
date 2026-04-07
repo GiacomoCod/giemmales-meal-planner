@@ -1,6 +1,6 @@
 /* ─── Recipes Hero Header ────────────────── */
 .recipes-hero {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface-color);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-radius: 24px;
@@ -12,8 +12,8 @@
   align-items: center;
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
 }
 
 .recipes-hero-text {
@@ -43,14 +43,14 @@
 .recipes-hero-page-title {
   font-size: 2.8rem;
   font-weight: 900;
-  color: #1a202c;
+  color: var(--text-main);
   margin: 0;
   letter-spacing: -1.5px;
 }
 
 .recipes-hero-page-subtitle {
   font-size: 1.1rem;
-  color: #64748b;
+  color: var(--text-muted);
   font-weight: 500;
   margin-top: 8px;
 }
@@ -114,25 +114,25 @@
 /* Tag Settings and Tooltip specific styles for Hero */
 .recipes-hero-tag-trigger {
   padding: 10px 18px;
-  background: white;
-  border: 1.5px solid #edf2f7;
+  background: var(--surface-color);
+  border: 1.5px solid var(--border-color);
   border-radius: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #4a5568;
+  color: var(--text-main);
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+  box-shadow: var(--shadow-sm);
 }
 
 .recipes-hero-tag-trigger:hover {
   border-color: #f97316;
   color: #f97316;
   transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(249, 115, 22, 0.1);
+  box-shadow: var(--shadow-md);
 }
 
 /* Responsive */

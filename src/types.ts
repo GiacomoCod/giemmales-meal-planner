@@ -7,7 +7,8 @@ export type Tag = {
 export type MealEntry = {
   id: string;
   text: string;
-  assignee: string;
+  assignee: string; // legacy backward-compat
+  assignees?: string[]; // new multi-tag
 };
 
 export type MealPlan = {

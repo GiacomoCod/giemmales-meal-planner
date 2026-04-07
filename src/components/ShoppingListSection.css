@@ -17,20 +17,20 @@
 
 /* ─── Shopping Hero Header ────────────────── */
 .shopping-hero {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--surface-color);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-radius: 24px;
   padding: 30px 40px;
-  margin-top: 20px; /* Space from navbar */
+  margin-top: 40px; /* Standardized for desktop */
   margin-bottom: 30px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
 }
 
 .shopping-hero-text {
@@ -54,14 +54,14 @@
 .shopping-hero-page-title {
   font-size: 2.8rem;
   font-weight: 900;
-  color: #1a202c;
+  color: var(--text-main);
   margin: 0;
   letter-spacing: -1.5px;
 }
 
 .shopping-hero-page-subtitle {
   font-size: 1.1rem;
-  color: #64748b;
+  color: var(--text-muted);
   font-weight: 500;
   margin-top: 8px;
 }
@@ -150,11 +150,11 @@
   position: relative;
   border-radius: 28px;
   padding: 24px;
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--surface-color);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-color);
   transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
@@ -194,11 +194,11 @@
   gap: 8px;
   padding: 9px 16px;
   border-radius: 14px;
-  border: 2px solid transparent;
-  background: #f1f5f9;
+  border: 2px solid var(--border-color);
+  background: var(--surface-subtle);
   font-size: 0.85rem;
   font-weight: 700;
-  color: #64748b;
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -268,14 +268,14 @@
 .s-input {
   width: 100%;
   padding: 12px 14px 12px 40px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid var(--border-color);
   border-radius: 16px;
   font-size: 1rem;
   font-weight: 500;
-  background: white;
+  background: var(--surface-subtle);
   transition: all 0.2s ease;
   font-family: inherit;
-  color: #334155;
+  color: var(--text-main);
   box-sizing: border-box;
 }
 
@@ -355,14 +355,14 @@
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  background: white;
+  background: var(--surface-color);
   border-radius: 18px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.10);
+  box-shadow: var(--shadow-lg);
   z-index: 9999;
   max-height: 260px;
   overflow-y: auto;
   padding: 6px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-color);
 }
 
 .s-suggestion-row {
@@ -464,7 +464,7 @@
 .s-list-name {
   font-size: 1.3rem;
   font-weight: 800;
-  color: #1a202c;
+  color: var(--text-main);
   margin: 0;
 }
 
@@ -523,17 +523,17 @@
   display: flex;
   align-items: center;
   padding: 12px 14px;
-  background: #f8fafc;
+  background: var(--surface-subtle);
   border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid transparent;
+  border: 1px solid var(--border-color);
   gap: 12px;
 }
 
 .s-item:hover {
-  background: #fff;
-  border-color: #e2e8f0;
+  background: var(--surface-hover);
+  border-color: var(--border-color);
 }
 
 .s-item.done {
@@ -568,7 +568,7 @@
   flex: 1;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--text-main);
 }
 
 .s-item-del {
@@ -597,7 +597,19 @@
   display: flex;
   gap: 4px;
 }
+.s-accordion-content-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
 
+.s-accordion-content-wrapper.is-open {
+  grid-template-rows: 1fr;
+}
+
+.s-accordion-content-inner {
+  overflow: hidden;
+}
 .s-confirm-btn {
   width: 30px;
   height: 30px;

@@ -59,6 +59,9 @@ function App() {
 
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [isScrolled, setIsScrolled] = useState(false);
 
   const [mealPlan, setMealPlan] = useState<MealPlan>({});
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
@@ -68,7 +71,24 @@ function App() {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings'>('home');
+  const [activeTab, setActiveTabState] = useState<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings'>('home');
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('left');
+
+  const setActiveTab = useCallback((newTab: 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings', explicitDirection?: 'left' | 'right') => {
+    if (explicitDirection) {
+      setSlideDirection(explicitDirection);
+    } else {
+      const allTabs = ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
+      const prevIndex = allTabs.indexOf(activeTab);
+      const newIndex = allTabs.indexOf(newTab);
+      if (newIndex > prevIndex) {
+        setSlideDirection('left');
+      } else if (newIndex < prevIndex) {
+        setSlideDirection('right');
+      }
+    }
+    setActiveTabState(newTab);
+  }, [activeTab]);
   const [visibleSections, setVisibleSections] = useState<Record<string, boolean>>({
     planner: true,
     shopping: true,
@@ -99,6 +119,7 @@ function App() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [isDeletingAllInProgress, setIsDeletingAllInProgress] = useState(false);
   const undoTimeoutRef = useRef<any>(null);
@@ -121,7 +142,16 @@ function App() {
     
     // Don't swipe if we are in an input/textarea
     const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('.settings-form')) {
+    if (
+      target.tagName === 'INPUT' || 
+      target.tagName === 'TEXTAREA' || 
+      target.closest('.settings-form') ||
+      target.closest('.bottom-sheet-content') ||
+      target.closest('.calendar-scroll-wrapper') ||
+      target.closest('.house-calendar-grid') ||
+      target.closest('.nav-tabs') ||
+      target.closest('.horizontal-scroll')
+    ) {
       touchStartPos.current = null;
       return;
     }
@@ -134,8 +164,8 @@ function App() {
     // Must be horizontal and significant
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 75) {
       const allTabs: Array<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings'> = 
-        ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
-      const activeTabs = allTabs.filter(t => t === 'home' || t === 'settings' || visibleSections[t]);
+        ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance'];
+      const activeTabs = allTabs.filter(t => t === 'home' || visibleSections[t]);
       
       const currentIndex = activeTabs.indexOf(activeTab);
       if (currentIndex === -1) return;
@@ -143,11 +173,11 @@ function App() {
       if (deltaX > 0) {
         // Swipe Right -> Go to Previous
         const prevIndex = (currentIndex - 1 + activeTabs.length) % activeTabs.length;
-        setActiveTab(activeTabs[prevIndex]);
+        setActiveTab(activeTabs[prevIndex], 'right');
       } else {
         // Swipe Left -> Go to Next
         const nextIndex = (currentIndex + 1) % activeTabs.length;
-        setActiveTab(activeTabs[nextIndex]);
+        setActiveTab(activeTabs[nextIndex], 'left');
       }
     }
   };
@@ -164,8 +194,17 @@ function App() {
       }
     };
 
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 40);
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", handleScroll);
+    };
   }, [isMobile]);
 
   const handleDeleteAllNotifications = async () => {
@@ -222,13 +261,23 @@ function App() {
     const fetchSettings = async () => {
       try {
         const snap = await getDoc(doc(db, `profiles/${activeProfile.id}/metadata`, 'settings'));
-        if (snap.exists() && snap.data().visibleSections) {
-          setVisibleSections(snap.data().visibleSections);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.visibleSections) setVisibleSections(data.visibleSections);
+          if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
         }
       } catch (err) { }
     };
     fetchSettings();
   }, [activeProfile.id]);
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark-mode');
+    } else {
+      document.documentElement.classList.remove('dark-mode');
+    }
+  }, [isDarkMode]);
 
   const handleToggleSection = async (sectionId: string) => {
     const newVal = !visibleSections[sectionId];
@@ -241,6 +290,19 @@ function App() {
       }, { merge: true });
     } catch (err) {
       console.error("Error saving settings:", err);
+    }
+  };
+
+  const handleToggleDarkMode = async () => {
+    const newVal = !isDarkMode;
+    setIsDarkMode(newVal);
+    
+    try {
+      await setDoc(doc(db, `profiles/${activeProfile.id}/metadata`, 'settings'), {
+        isDarkMode: newVal
+      }, { merge: true });
+    } catch (err) {
+      console.error("Error saving dark mode:", err);
     }
   };
 
@@ -264,6 +326,7 @@ function App() {
       if (isAuthLoading) {
         console.warn("[FIREBASE] Auth initialization timeout. Proceeding to login/home.");
         setIsAuthLoading(false);
+        setIsDataLoading(false);
       }
     }, 8000);
 
@@ -272,6 +335,14 @@ function App() {
       clearTimeout(timeout);
     };
   }, [isAuthLoading]);
+
+  // Failsafe for data loading skeletons
+  useEffect(() => {
+    const dataTimer = setTimeout(() => {
+      setIsDataLoading(false);
+    }, 1500); // Max 1.5s skeleton loading
+    return () => clearTimeout(dataTimer);
+  }, []);
 
   // One-time triggers for profile change (Migration & Cleanup)
   useEffect(() => {
@@ -605,8 +676,13 @@ function App() {
     }
   };
 
-  const handleAddMealEntry = async (dateKey: string, mealId: string, text: string, assignee: string) => {
-    const newEntry: MealEntry = { id: generateId(), text, assignee };
+  const handleAddMealEntry = async (dateKey: string, mealId: string, text: string, assignees: string[]) => {
+    const newEntry: MealEntry = { 
+      id: generateId(), 
+      text, 
+      assignee: assignees[0] || '', // Fallback for deep-legacy usages
+      assignees 
+    };
     const dayData = mealPlan[dateKey] || {};
 
     try {
@@ -617,7 +693,8 @@ function App() {
 
       // Create Notification
       const dayName = format(parseISO(dateKey), 'EEEE d', { locale: it });
-      const noteText = `Pasto "${text}" aggiunto a ${dayName} (${assignee})`;
+      const assigneesText = assignees.join(', ') || 'tutti'; // For notification text
+      const noteText = `Pasto "${text}" aggiunto a ${dayName} (${assigneesText})`;
       const notifId = generateId();
       await setDoc(doc(db, colPath('notifications'), notifId), {
         text: noteText,
@@ -657,13 +734,13 @@ function App() {
     }
   };
 
-  const handleUpdateAssignee = async (dateKey: string, mealId: string, entryId: string, assignee: string) => {
+  const handleUpdateAssignee = async (dateKey: string, mealId: string, entryId: string, assignees: string[]) => {
     const dayData = mealPlan[dateKey] || {};
     const mealData = (dayData[mealId] || []) as MealEntry[];
 
     await setDoc(doc(db, colPath('mealPlans'), dateKey), {
       ...dayData,
-      [mealId]: mealData.map(e => e.id === entryId ? { ...e, assignee } : e)
+      [mealId]: mealData.map(e => e.id === entryId ? { ...e, assignee: assignees[0] || '', assignees } : e)
     }, { merge: true });
   };
 
@@ -1037,6 +1114,7 @@ function App() {
       });
     } catch (e) {
       console.error('Error adding expense:', e);
+      throw e;
     }
   };
 
@@ -1048,8 +1126,16 @@ function App() {
     }
   };
 
-  if (isAuthLoading) return <div style={{display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center'}}>Caricamento...</div>;
-  if (!user) return <Login />;
+  if (isAuthLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50 skeleton-box" style={{ width: '100vw', height: '100vh', borderRadius: 0 }}>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   return (
     <div 
@@ -1057,13 +1143,14 @@ function App() {
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* MOBILE MINI HEADER */}
+      {/* Mobile Top Header */}
       {isMobile && (
-        <header className="mobile-header">
+        <header className={`mobile-header ${isScrolled ? 'is-scrolled' : ''}`}>
           <div className="mobile-header-left">
             <div 
               className="nav-icon-wrapper" 
-              style={{ cursor: 'default' }}
+              style={{ cursor: 'pointer' }}
+              onClick={() => setActiveTab('home')}
             >
               {profileAvatar ? (
                 <img src={profileAvatar} alt="Profile" className="nav-icon-hover" style={{ opacity: 1, transform: 'scale(1)', position: 'static' }} />
@@ -1205,10 +1292,11 @@ function App() {
         </div>
       )}
 
+      {/* Desktop Navigation */}
       {!isMobile && (
-        <nav className="top-nav">
-        <div className="nav-container">
-          <div className="nav-brand">
+        <nav className={`top-nav ${isScrolled ? 'is-scrolled' : ''}`}>
+          <div className="nav-container">
+            <div className="nav-brand">
             <div className="profile-selector" ref={profileDropdownRef}>
               <h1 className="nav-title">
                 <div 
@@ -1402,8 +1490,16 @@ function App() {
       )}
 
       <div className={`layout ${isMobile ? 'is-mobile' : ''}`}>
-        <div key={activeTab} className={`layout-content ${isMobile ? 'mobile-page-transition' : ''}`}>
-          {activeTab === 'home' && (
+        <div key={activeTab} className={`layout-content ${isMobile ? `mobile-page-transition-${slideDirection}` : ''}`}>
+          {isDataLoading ? (
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div className="skeleton-box" style={{ width: '40%', height: '40px' }} />
+              <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '24px' }} />
+              <div className="skeleton-box" style={{ width: '100%', height: '300px', borderRadius: '24px' }} />
+            </div>
+          ) : (
+            <>
+              {activeTab === 'home' && (
             <HomeSection
               isMobile={isMobile}
               userName={activeProfile.name}
@@ -1561,12 +1657,16 @@ function App() {
           <SettingsSection 
             user={user} 
             isGiemmale={isGiemmale} 
-            activeProfileId={activeProfile.id} 
+            activeProfile={activeProfile}
             visibleSections={visibleSections}
             onToggleSection={handleToggleSection}
             isMobile={isMobile}
+            isDarkMode={isDarkMode}
+            onToggleDarkMode={handleToggleDarkMode}
           />
         )}
+        </>
+      )}
       </div>
       </div>
 

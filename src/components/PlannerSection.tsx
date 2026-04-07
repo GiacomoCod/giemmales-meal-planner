@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Settings, Plus, X, Trash2, Check, MoreVertical, Users, Calendar as CalendarIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings, X, Trash2, MoreVertical, Users, Calendar as CalendarIcon } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, addDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { MealSlot } from './MealSlot';
 import { MEALS, PASTEL_VARS } from '../constants';
 import type { MealPlan, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
+import { TagManagerModal } from './TagManagerModal';
 import spaghettiImg from '../assets/spaghetti-3d.png';
 import './PlannerSection.css';
 
@@ -25,18 +26,14 @@ interface PlannerSectionProps {
   handleUpdateNotes: (notes: string) => void;
   activeWeekDays: Date[];
   mealPlan: MealPlan;
-  handleAddMealEntry: (dateKey: string, mealId: string, text: string, assignee: string) => void;
+  handleAddMealEntry: (dateKey: string, mealId: string, text: string, assignees: string[]) => void;
   handleRemoveMealEntry: (dateKey: string, mealId: string, entryId: string) => void;
-  handleUpdateAssignee: (dateKey: string, mealId: string, entryId: string, assignee: string) => void;
+  handleUpdateAssignee: (dateKey: string, mealId: string, entryId: string, assignees: string[]) => void;
   handleUpdateMealEntryText: (dateKey: string, mealId: string, entryId: string, newText: string) => void;
   tags: Tag[];
   onAddTag: (tag: Tag) => void;
   onDeleteTag: (tagId: string) => void;
 }
-
-const TAG_COLORS = [
-  '#ffecf1', '#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#f1f8e9', '#e0f2f1', '#fce4ec'
-];
 
 export function PlannerSection({
   isMobile, currentMonth, prevMonth, nextMonth, calendarDays, selectedWeekStart, selectedWeekEnd, monthStart,
@@ -47,18 +44,6 @@ export function PlannerSection({
   const [showTagSettings, setShowTagSettings] = useState(false);
   const [showPlannerSheet, setShowPlannerSheet] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [newTagLabel, setNewTagLabel] = useState('');
-  const [showTagDeleteConfirm, setShowTagDeleteConfirm] = useState<string | null>(null);
-
-  const handleCreateTag = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newTagLabel.trim()) {
-      const id = newTagLabel.trim().toLowerCase().replace(/\s+/g, '-');
-      const color = TAG_COLORS[tags.length % TAG_COLORS.length];
-      onAddTag({ id, label: newTagLabel.trim(), color });
-      setNewTagLabel('');
-    }
-  };
 
   const handlePrevWeek = () => {
     const newDate = addDays(selectedWeekStart, -7);
@@ -150,9 +135,9 @@ export function PlannerSection({
                             <MealSlot
                               meal={meal}
                               entries={mealPlan[dateKey]?.[meal.id] || []}
-                              onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
+                              onAdd={(text, assignees) => handleAddMealEntry(dateKey, meal.id, text, assignees)}
                               onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
-                              onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
+                              onUpdateAssignee={(id, assignees) => handleUpdateAssignee(dateKey, meal.id, id, assignees)}
                               onUpdateText={(id, newText) => handleUpdateMealEntryText(dateKey, meal.id, id, newText)}
                               tags={tags}
                               hideHeader={true}
@@ -198,38 +183,12 @@ export function PlannerSection({
         </div>
 
         {showTagSettings && (
-          <div className="management-sheet-overlay" onClick={() => setShowTagSettings(false)}>
-            <div className="management-sheet-content" onClick={e => e.stopPropagation()}>
-              <div className="management-sheet-header">
-                <h3><Users size={24} /> Coinquilini</h3>
-                <button className="management-sheet-close" onClick={() => setShowTagSettings(false)}>
-                  <X size={24} />
-                </button>
-              </div>
-
-              <div className="management-sheet-body">
-                <div className="tags-list-current">
-                  {tags.map(tag => (
-                    <div key={tag.id} className="tag-item-editor">
-                      <div className="tag-badge-preview" style={{ backgroundColor: tag.color }}>{tag.label}</div>
-                      <button className="tag-delete-btn" onClick={() => onDeleteTag(tag.id)} title="Elimina Coinquilino">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <form className="f-add-tag-form" onSubmit={handleCreateTag}>
-                  <input 
-                    type="text" 
-                    placeholder="Nuovo coinquilino..." 
-                    value={newTagLabel}
-                    onChange={(e) => setNewTagLabel(e.target.value)}
-                  />
-                  <button type="submit" className="f-add-tag-submit"><Plus size={24} /></button>
-                </form>
-              </div>
-            </div>
-          </div>
+          <TagManagerModal 
+            tags={tags}
+            onAddTag={onAddTag}
+            onDeleteTag={onDeleteTag}
+            onClose={() => setShowTagSettings(false)}
+          />
         )}
 
         {showPlannerSheet && (
@@ -272,19 +231,29 @@ export function PlannerSection({
                                   <div className="planner-sheet-meal-label">
                                     <meal.Icon size={14} /> {meal.label}
                                   </div>
-                                  {items.map(item => (
-                                    <div key={item.id} className="planner-sheet-item">
-                                      <span className="p-item-text">{item.text}</span>
-                                      {item.assignee && (
-                                        <span className="p-item-tag" style={{ background: tags.find(t => t.id === item.assignee)?.color }}>
-                                          {tags.find(t => t.id === item.assignee)?.label}
-                                        </span>
-                                      )}
-                                      <button className="p-item-del" onClick={() => handleRemoveMealEntry(dateKey, meal.id, item.id)}>
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                  ))}
+                                  {items.map(item => {
+                                    const entryTags = item.assignees && item.assignees.length > 0 ? item.assignees : (item.assignee ? [item.assignee] : []);
+                                    return (
+                                      <div key={item.id} className="planner-sheet-item">
+                                        <span className="p-item-text">{item.text}</span>
+                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', flexShrink: 0 }}>
+                                          {entryTags.slice(0, 2).map(a => (
+                                            <span key={a} className="p-item-tag" style={{ background: tags.find(t => t.label === a)?.color || tags.find(t => t.id === a)?.color }}>
+                                              {a}
+                                            </span>
+                                          ))}
+                                          {entryTags.length > 2 && (
+                                            <span className="p-item-tag" style={{ background: '#e2e8f0', color: '#475569' }}>
+                                              +{entryTags.length - 2}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <button className="p-item-del" onClick={() => handleRemoveMealEntry(dateKey, meal.id, item.id)}>
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               ))
                             )}
@@ -397,9 +366,9 @@ export function PlannerSection({
                       key={meal.id}
                       meal={meal}
                       entries={mealPlan[dateKey]?.[meal.id] || []}
-                      onAdd={(text, assignee) => handleAddMealEntry(dateKey, meal.id, text, assignee)}
+                      onAdd={(text, assignees) => handleAddMealEntry(dateKey, meal.id, text, assignees)}
                       onRemove={(id) => handleRemoveMealEntry(dateKey, meal.id, id)}
-                      onUpdateAssignee={(id, assignee) => handleUpdateAssignee(dateKey, meal.id, id, assignee)}
+                      onUpdateAssignee={(id, assignees) => handleUpdateAssignee(dateKey, meal.id, id, assignees)}
                       onUpdateText={(id, newText) => handleUpdateMealEntryText(dateKey, meal.id, id, newText)}
                       tags={tags}
                     />
@@ -412,79 +381,12 @@ export function PlannerSection({
       </main>
 
       {showTagSettings && (
-        <div className="modal-overlay" onClick={() => {
-          setShowTagSettings(false);
-          setShowTagDeleteConfirm(null);
-        }}>
-          <div className="tag-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-with-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <h3>Gestione Targhette</h3>
-                <InfoTooltip text="Le targhette servono per assegnare i pasti a persone diverse (famiglia, coinquilini). Qui puoi aggiungere nuovi nomi o rimuovere quelli esistenti per personalizzare il tuo calendario!" />
-              </div>
-              <button className="modal-close" onClick={() => {
-                setShowTagSettings(false);
-                setShowTagDeleteConfirm(null);
-              }}><X size={20} /></button>
-            </div>
-            
-            <div className="tags-list-current">
-              {tags.map(tag => (
-                <div key={tag.id} className="tag-item-editor">
-                  <div className="tag-badge-preview" style={{ backgroundColor: tag.color }}>
-                    {tag.label}
-                  </div>
-                  
-                  {showTagDeleteConfirm === tag.id ? (
-                    <div className="delete-confirm-inline">
-                      <button 
-                        className="confirm-btn-mini" 
-                        onClick={() => {
-                          onDeleteTag(tag.id);
-                          setShowTagDeleteConfirm(null);
-                        }}
-                        title="Conferma eliminazione"
-                      >
-                        <Check size={14} strokeWidth={3} />
-                      </button>
-                      <button 
-                        className="cancel-btn-mini" 
-                        onClick={() => setShowTagDeleteConfirm(null)}
-                        title="Annulla"
-                      >
-                        <X size={14} strokeWidth={3} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button 
-                      className="tag-delete-btn" 
-                      onClick={() => setShowTagDeleteConfirm(tag.id)}
-                      disabled={tags.length <= 1}
-                      title="Elimina targhetta"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <form className="add-tag-form" onSubmit={handleCreateTag}>
-              <input 
-                type="text" 
-                placeholder="Nome persona/targhetta..." 
-                value={newTagLabel}
-                onChange={e => setNewTagLabel(e.target.value)}
-              />
-              <button type="submit" className="add-tag-btn">
-                <Plus size={18} />
-                <span>Aggiungi</span>
-              </button>
-            </form>
-            
-            <p className="modal-hint">Le targhette permettono di assegnare i pasti a persone diverse.</p>
-          </div>
-        </div>
+        <TagManagerModal 
+          tags={tags}
+          onAddTag={onAddTag}
+          onDeleteTag={onDeleteTag}
+          onClose={() => setShowTagSettings(false)}
+        />
       )}
     </>
   );

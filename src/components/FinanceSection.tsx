@@ -8,6 +8,7 @@ import { format, startOfMonth, endOfMonth, subMonths, addMonths, parseISO } from
 import { it } from 'date-fns/locale';
 import type { Expense, ExpenseCategory, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
+import { TagManagerModal } from './TagManagerModal';
 import financeImg from '../assets/finance-3d.png';
 import './FinanceSection.css';
 
@@ -27,9 +28,7 @@ function formatEur(n: number) {
   return `${Math.abs(n).toFixed(2).replace('.', ',')} €`;
 }
 
-const TAG_COLORS = [
-  '#ffecf1', '#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#f1f8e9', '#e0f2f1', '#fce4ec'
-];
+
 
 /* ============================================================
    PIE CHART (pure SVG, zero deps)
@@ -139,11 +138,17 @@ export function FinanceSection({
   const [isSplit, setIsSplit] = useState(false);
   const [splitWith, setSplitWith] = useState<string[]>([]);
   const [showTagSettings, setShowTagSettings] = useState(false);
-  const [newTagLabel, setNewTagLabel] = useState('');
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
   const [showMobileAddForm, setShowMobileAddForm] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showExpensesSheet, setShowExpensesSheet] = useState(false);
+
+  // Sync paidBy when tags load
+  React.useEffect(() => {
+    if (!paidBy && tags.length > 0) {
+      setPaidBy(tags[0].id);
+    }
+  }, [tags, paidBy]);
 
   const monthStart = startOfMonth(viewMonth);
   const monthEnd   = endOfMonth(viewMonth);
@@ -197,11 +202,11 @@ export function FinanceSection({
     const c = creditors.map(x => ({ ...x }));
     while (di < d.length && ci < c.length) {
       const settled = Math.min(-d[di].balance, c[ci].balance);
-      if (settled > 0.01) debts.push({ from: d[di].label, to: c[ci].label, amount: settled });
+      if (settled > 0.005) debts.push({ from: d[di].label, to: c[ci].label, amount: settled });
       d[di].balance += settled;
       c[ci].balance -= settled;
-      if (Math.abs(d[di].balance) < 0.01) di++;
-      if (Math.abs(c[ci].balance) < 0.01) ci++;
+      if (Math.abs(d[di].balance) < 0.005) di++;
+      if (Math.abs(c[ci].balance) < 0.005) ci++;
     }
     return debts;
   }, [monthExpenses, tags]);
@@ -218,7 +223,10 @@ export function FinanceSection({
       const ms = startOfMonth(m);
       const me = endOfMonth(m);
       const total = expenses
-        .filter(e => { const d = parseISO(e.date); return d >= ms && d <= me; })
+        .filter(e => { 
+          const d = parseISO(e.date); 
+          return d >= ms && d <= me && e.category !== 'repayment'; 
+        })
         .reduce((s, e) => s + e.amount, 0);
       return { label: format(m, 'MMM', { locale: it }), amount: total };
     });
@@ -259,21 +267,17 @@ export function FinanceSection({
       setDescription('');
       setIsSplit(false);
       setSplitWith([]);
+      setIsSaving(false);
       setShowMobileAddForm(false);
+    } catch (err) {
+      console.error(err);
+      alert("Errore durante il salvataggio della spesa. Riprova.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleCreateTag = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newTagLabel.trim()) {
-      const id = newTagLabel.trim().toLowerCase().replace(/\s+/g, '-');
-      const color = TAG_COLORS[tags.length % TAG_COLORS.length];
-      onAddTag({ id, label: newTagLabel.trim(), color });
-      setNewTagLabel('');
-    }
-  };
+
 
   const handleRepay = async (from: string, to: string, amount: number) => {
     const debtor = tags.find(t => t.label === from);
@@ -289,6 +293,9 @@ export function FinanceSection({
         paidBy: debtor.id,
         splitWith: [creditor.id]
       });
+    } catch (err) {
+      console.error(err);
+      alert("Errore durante la registrazione del rimborso.");
     } finally {
       setIsSaving(false);
     }
@@ -453,6 +460,29 @@ export function FinanceSection({
                       );
                     })}
                   </div>
+
+                  {!isMobile && balanceSummary.length > 0 && (
+                    <div className="f-desktop-repay-section">
+                      <p className="f-repay-title">Debiti & Rimborsi</p>
+                      <div className="f-repay-list">
+                        {balanceSummary.map((s, i) => (
+                          <div key={i} className="f-repay-row">
+                            <div className="f-repay-names">
+                              <span className="f-repay-name-from">{s.from}</span>
+                              <ArrowRightLeft size={12} className="f-repay-arrow" />
+                              <span className="f-repay-name-to">{s.to}</span>
+                            </div>
+                            <div className="f-repay-action-group">
+                              <span className="f-repay-val">{formatEur(s.amount)}</span>
+                              <button className="f-repay-btn" onClick={() => handleRepay(s.from, s.to, s.amount)} title="Segna come rimborsato">
+                                <Check size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -576,48 +606,14 @@ export function FinanceSection({
       </div>
 
       {showTagSettings && (
-        <div className={`modal-overlay ${isMobile ? 'management-sheet-overlay' : ''}`} onClick={() => setShowTagSettings(false)}>
-          <div className={isMobile ? 'management-sheet-content' : 'tag-modal'} onClick={e => e.stopPropagation()}>
-            {isMobile ? (
-              <div className="management-sheet-header">
-                <h3><Users size={24} /> Coinquilini</h3>
-                <button className="management-sheet-close" onClick={() => setShowTagSettings(false)}>
-                  <X size={24} />
-                </button>
-              </div>
-            ) : (
-              <div className="modal-header">
-                <h3>Coinquilini</h3>
-                <button onClick={() => setShowTagSettings(false)}><X size={24} /></button>
-              </div>
-            )}
-
-            <div className={isMobile ? 'management-sheet-body' : ''}>
-              <div className="tags-list-current">
-                {tags.map(tag => (
-                  <div key={tag.id} className="tag-item-editor">
-                    <span className="tag-badge-preview" style={{ background: tag.color }}>{tag.label}</span>
-                    <button className="tag-delete-btn" onClick={() => onDeleteTag(tag.id)} title="Elimina Coinquilino">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              
-              <form onSubmit={handleCreateTag} className="f-add-tag-form">
-                <input 
-                  type="text" 
-                  placeholder="Nuovo coinquilino..." 
-                  value={newTagLabel} 
-                  onChange={e => setNewTagLabel(e.target.value)} 
-                />
-                <button type="submit" className="f-add-tag-submit">
-                  <Plus size={24} />
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
+        <TagManagerModal 
+          tags={tags}
+          onAddTag={onAddTag}
+          onDeleteTag={onDeleteTag}
+          onClose={() => setShowTagSettings(false)}
+          title="Coinquilini"
+          hint="I coinquilini partecipano alla divisione delle spese. Puoi aggiungere o rimuovere partecipanti."
+        />
       )}
     </main>
   );

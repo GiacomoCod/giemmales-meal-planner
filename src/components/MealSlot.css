@@ -1,0 +1,334 @@
+.meal-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.meal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-main);
+}
+
+.meal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.meal-icon {
+  color: var(--accent-primary);
+}
+
+.meal-entries {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meal-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface-subtle);
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s;
+}
+
+.meal-entry:hover {
+  border-color: var(--accent-subtle);
+}
+
+.entry-tags-container {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  cursor: pointer;
+  align-items: center;
+  padding: 2px;
+  border-radius: 14px;
+}
+
+.entry-tags-container:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.assignee-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1e293b;
+  border: none;
+  cursor: pointer;
+}
+
+.assignee-badge-empty {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  cursor: pointer;
+}
+
+.meal-entry-text {
+  flex: 1;
+  font-size: 0.95rem;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.meal-entry-text:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--accent-subtle);
+}
+
+.meal-edit-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.del-entry-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.del-entry-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.delete-confirm-inline {
+  display: flex;
+  gap: 4px;
+}
+
+.confirm-btn-mini {
+  background: #10b981;
+  color: white;
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.cancel-btn-mini {
+  background: #ef4444;
+  color: white;
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.add-entry-form {
+  margin-top: 4px;
+}
+
+.entry-input-group {
+  display: flex;
+}
+
+.entry-input-group input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  font-size: 0.95rem;
+  background: var(--surface-color);
+  color: var(--text-main);
+  outline: none;
+  transition: all 0.2s;
+}
+
+.entry-input-group input:focus {
+  border-style: solid;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+/* Modal Picker styles */
+.assignee-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 6000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: modalFadeIn 0.2s ease;
+}
+
+.assignee-modal-content {
+  background: var(--surface-color);
+  width: 100%;
+  max-width: 360px;
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.assignee-modal-header {
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.assignee-modal-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.assignee-modal-close {
+  background: var(--surface-subtle);
+  border: none;
+  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.assignee-modal-close:hover {
+  background: var(--error-color);
+  color: white;
+}
+
+.assignee-modal-body {
+  padding: 24px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.no-tags-msg {
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.multi-tag-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.multi-tag-btn {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1e293b;
+  border: 2px solid;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.multi-tag-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+
+.multi-tag-btn.selected {
+  border-style: solid;
+}
+
+.multi-tag-btn:not(.selected) {
+  background: transparent !important;
+  border-color: #e2e8f0 !important;
+  color: var(--text-muted);
+}
+
+.assignee-modal-footer {
+  padding: 20px 24px;
+  border-top: 1px solid var(--border-color);
+  background: var(--surface-subtle);
+}
+
+.assignee-modal-confirm {
+  width: 100%;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 14px;
+  font-weight: 700;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.assignee-modal-confirm:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px var(--accent-subtle);
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Dark Mode Overrides */
+:root[data-theme="dark"] .assignee-badge,
+:root[data-theme="dark"] .multi-tag-btn {
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .multi-tag-btn:not(.selected) {
+  border-color: #334155 !important;
+  color: #94a3b8;
+}

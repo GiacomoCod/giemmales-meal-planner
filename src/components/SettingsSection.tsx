@@ -23,28 +23,46 @@ import {
 import './SettingsSection.css';
 
 interface SettingsSectionProps {
-  user: User;
+  user: User | null;
   isGiemmale: boolean;
-  activeProfileId: string;
+  activeProfile: { id: string; name: string; title: string; isGiemmale?: boolean };
   visibleSections: Record<string, boolean>;
   onToggleSection: (sectionId: string) => void;
   isMobile: boolean;
+  isDarkMode: boolean;
+  onToggleDarkMode: () => void;
 }
 
-export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSections, onToggleSection, isMobile }: SettingsSectionProps) {
-  const [activeView, setActiveView] = useState<'menu' | 'profile' | 'security' | 'customization' | 'privacy'>('menu');
+export function SettingsSection({ 
+  user, 
+  isGiemmale, 
+  activeProfile, 
+  visibleSections, 
+  onToggleSection, 
+  isMobile,
+  isDarkMode,
+  onToggleDarkMode
+}: SettingsSectionProps) {
+  const [activeView, setActiveView] = useState<'menu' | 'profile' | 'security' | 'customization' | 'privacy'>(isMobile ? 'menu' : 'profile');
   
-  const [houseName, setHouseName] = useState(isGiemmale ? 'Casa dei Giemmale' : (user.displayName || user.email?.split('@')[0] || ''));
-  const [photoUrl, setPhotoUrl] = useState(user.photoURL || '');
+  const [houseName, setHouseName] = useState(isGiemmale ? 'Casa dei Giemmale' : (user?.displayName || user?.email?.split('@')[0] || ''));
+  const [photoUrl, setPhotoUrl] = useState(user?.photoURL || '');
   const [newPassword, setNewPassword] = useState('');
   
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Sync active view when switching between mobile and desktop if needed
+  useEffect(() => {
+    if (!isMobile && activeView === 'menu') {
+      setActiveView('profile');
+    }
+  }, [isMobile, activeView]);
+
   useEffect(() => {
     const fetchAvatar = async () => {
-      const colName = activeProfileId === 'giemmale' ? 'metadata' : `profiles/${activeProfileId}/metadata`;
+      const colName = activeProfile.id === 'giemmale' ? 'metadata' : `profiles/${activeProfile.id}/metadata`;
       try {
         const snap = await getDoc(doc(db, colName, 'profile'));
         if (snap.exists() && snap.data().avatarBase64) {
@@ -55,7 +73,7 @@ export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSect
       }
     };
     fetchAvatar();
-  }, [activeProfileId]);
+  }, [activeProfile.id]);
 
   const displayPicture = photoUrl || 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=200&h=200';
 
@@ -109,6 +127,7 @@ export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSect
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     setLoading(true);
     setSuccessMsg(null);
     setErrorMsg(null);
@@ -117,7 +136,7 @@ export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSect
       await updateProfile(user, { displayName: houseName });
       
       // Store the large Base64 Avatar strictly inside Firestore! (Limit 1MB per document)
-      const colName = activeProfileId === 'giemmale' ? 'metadata' : `profiles/${activeProfileId}/metadata`;
+      const colName = activeProfile.id === 'giemmale' ? 'metadata' : `profiles/${activeProfile.id}/metadata`;
       await setDoc(doc(db, colName, 'profile'), { avatarBase64: photoUrl }, { merge: true });
 
       setSuccessMsg('Profilo aggiornato con successo!');
@@ -131,6 +150,7 @@ export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSect
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     if (newPassword.length < 6) {
       setErrorMsg('La password deve avere almeno 6 caratteri.');
       return;
@@ -162,42 +182,46 @@ export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSect
           Profilo della Casa
         </h3>
         
-        <div className="avatar-section">
-          <div 
-            className="settings-avatar-wrapper"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <img src={displayPicture} alt="Avatar" className="settings-avatar" />
-            <div className="avatar-overlay">
-              <Camera size={24} />
-              <span>Scegli foto</span>
+        <div className="profile-horizontal-wrapper">
+          <div className="avatar-column">
+            <div 
+              className="settings-avatar-wrapper"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <img src={displayPicture} alt="Avatar" className="settings-avatar" />
+              <div className="avatar-overlay">
+                <Camera size={24} />
+                <span>Scegli foto</span>
+              </div>
             </div>
+            <input 
+              ref={fileInputRef}
+              type="file" 
+              accept="image/jpeg, image/png, image/webp" 
+              style={{ display: 'none' }}
+              onChange={handleImageChange}
+            />
           </div>
-          <input 
-            ref={fileInputRef}
-            type="file" 
-            accept="image/jpeg, image/png, image/webp" 
-            style={{ display: 'none' }}
-            onChange={handleImageChange}
-          />
-        </div>
 
-        <div className="input-group">
-          <label>Nome della Casa</label>
-          <input 
-            type="text" 
-            placeholder="Nome..." 
-            value={houseName}
-            onChange={(e) => setHouseName(e.target.value)}
-            disabled={isGiemmale}
-          />
-          {isGiemmale && <small className="hint-text">Il nome di questa casa principale non è modificabile.</small>}
-        </div>
+          <div className="fields-column">
+            <div className="input-group">
+              <label>Nome della Casa</label>
+              <input 
+                type="text" 
+                placeholder="Nome..." 
+                value={houseName}
+                onChange={(e) => setHouseName(e.target.value)}
+                disabled={isGiemmale}
+              />
+              {isGiemmale && <small className="hint-text">Il nome di questa casa principale non è modificabile.</small>}
+            </div>
 
-        <button type="submit" className="save-btn" disabled={loading}>
-          {loading ? 'Salvataggio...' : 'Salva Profilo'}
-          <Save size={18} />
-        </button>
+            <button type="submit" className="save-btn" disabled={loading}>
+              {loading ? 'Salvataggio...' : 'Salva Profilo'}
+              <Save size={18} />
+            </button>
+          </div>
+        </div>
       </div>
     </form>
   );
@@ -229,38 +253,51 @@ export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSect
     </form>
   );
 
-  const renderCustomizationForm = () => (
-    <div className="settings-form customization">
+  const renderCustomizationView = () => (
+    <div className="settings-view-form">
       <div className="form-inner">
         <h3>
           <Palette size={20} className="settings-icon" />
-          Personalizzazione Navbar
+          Personalizzazione
         </h3>
-        <p className="section-desc">Scegli quali sezioni visualizzare nella barra di navigazione.</p>
         
-        <div className="custom-toggle-list">
-          {[
-            { id: 'planner', label: 'Calendario Menù', icon: CalendarIcon },
-            { id: 'shopping', label: 'Lista Spesa', icon: ShoppingCart },
-            { id: 'recipes', label: 'Ricette', icon: BookOpen },
-            { id: 'cleaning', label: 'Pulizie del Menù', icon: Sparkles },
-            { id: 'finance', label: 'Finanza & Spese', icon: Wallet },
-          ].map((section) => (
-            <div key={section.id} className="custom-toggle-item">
-              <div className="toggle-item-info">
-                <section.icon size={20} className="toggle-icon" />
-                <span>{section.label}</span>
+        <div className="customization-group">
+          <h3>Sezioni Visibili</h3>
+          <div className="toggle-list">
+            {[
+              { id: 'planner', label: 'Calendario Menù', icon: CalendarIcon },
+              { id: 'shopping', label: 'Lista Spesa', icon: ShoppingCart },
+              { id: 'recipes', label: 'Ricette', icon: BookOpen },
+              { id: 'cleaning', label: 'Pulizie del Menù', icon: Sparkles },
+              { id: 'finance', label: 'Finanza & Spese', icon: Wallet },
+            ].map((section) => (
+              <div key={section.id} className={`toggle-item ${visibleSections[section.id] ? 'active' : ''}`} onClick={() => onToggleSection(section.id)}>
+                <div className="toggle-item-left">
+                  <div className={`section-icon-box ${section.id}`}><section.icon size={18} /></div>
+                  <div className="toggle-info">
+                    <span>{section.label}</span>
+                  </div>
+                </div>
+                <div className="toggle-switch"></div>
               </div>
-              <label className="settings-switch">
-                <input 
-                  type="checkbox" 
-                  checked={visibleSections[section.id]} 
-                  onChange={() => onToggleSection(section.id)}
-                />
-                <span className="slider round"></span>
-              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="customization-group dark-mode-settings">
+          <h3>Tema</h3>
+          <div className="toggle-list">
+            <div className={`toggle-item ${isDarkMode ? 'active' : ''}`} onClick={onToggleDarkMode}>
+              <div className="toggle-item-left">
+                <div className="section-icon-box dark-mode"><ShieldCheck size={18} /></div>
+                <div className="toggle-info">
+                  <span>Modalità Scura (Dark Mode)</span>
+                  <small>Interfaccia ottimizzata per il riposo visivo</small>
+                </div>
+              </div>
+              <div className="toggle-switch"></div>
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </div>
@@ -302,9 +339,58 @@ export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSect
     </div>
   );
 
+  const renderMenuList = () => (
+    <div className="settings-menu-list">
+      <div 
+        className={`settings-menu-item ${activeView === 'profile' ? 'active' : ''}`} 
+        onClick={() => { setActiveView('profile'); setSuccessMsg(null); setErrorMsg(null); }}
+      >
+         <div className="menu-item-left">
+            <div className="menu-icon-bg profile"><UserIcon size={22} /></div>
+            <span>Profilo & Casa</span>
+         </div>
+         <ChevronRight size={20} className="menu-chevron" />
+      </div>
+
+      <div 
+        className={`settings-menu-item ${activeView === 'security' ? 'active' : ''}`} 
+        onClick={() => { setActiveView('security'); setSuccessMsg(null); setErrorMsg(null); }}
+      >
+         <div className="menu-item-left">
+            <div className="menu-icon-bg security"><Lock size={22} /></div>
+            <span>Sicurezza</span>
+         </div>
+         <ChevronRight size={20} className="menu-chevron" />
+      </div>
+
+      <div 
+        className={`settings-menu-item ${activeView === 'customization' ? 'active' : ''}`} 
+        onClick={() => { setActiveView('customization'); setSuccessMsg(null); setErrorMsg(null); }}
+      >
+         <div className="menu-item-left">
+            <div className="menu-icon-bg customization"><Palette size={22} /></div>
+            <span>Personalizzazione</span>
+         </div>
+         <ChevronRight size={20} className="menu-chevron" />
+      </div>
+
+      <div 
+        className={`settings-menu-item ${activeView === 'privacy' ? 'active' : ''}`} 
+        onClick={() => { setActiveView('privacy'); setSuccessMsg(null); setErrorMsg(null); }}
+      >
+         <div className="menu-item-left">
+            <div className="menu-icon-bg privacy"><ShieldCheck size={22} /></div>
+            <span>Privacy Policy</span>
+         </div>
+         <ChevronRight size={20} className="menu-chevron" />
+      </div>
+    </div>
+  );
+
   return (
     <div className={`settings-section ${isMobile ? 'is-mobile' : ''}`}>
       <div className="settings-card">
+        {/* Header - shown on Mobile Menu or Always on Desktop */}
         {(activeView === 'menu' || !isMobile) && (
           <div className="settings-header">
             <h2>Gestione Account</h2>
@@ -312,64 +398,41 @@ export function SettingsSection({ user, isGiemmale, activeProfileId, visibleSect
           </div>
         )}
 
+        {/* Back Button - Mobile Only */}
         {isMobile && activeView !== 'menu' && (
           <div className="settings-mobile-back" onClick={() => { setActiveView('menu'); setSuccessMsg(null); setErrorMsg(null); }}>
              <div className="back-button-circle">
                 <ArrowLeft size={20} />
              </div>
+             <span>Torna alle impostazioni</span>
           </div>
         )}
 
-        {(successMsg || errorMsg) && (activeView !== 'menu' || !isMobile) && (
+        {/* Alerts - shown above forms */}
+        {(successMsg || errorMsg) && (activeView !== 'menu') && (
           <div className={`settings-alert ${successMsg ? 'success' : 'error'}`}>
             {successMsg ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
             <span>{successMsg || errorMsg}</span>
           </div>
         )}
 
-        <div className="settings-content-wrapper">
-          {/* MENU (Only for Mobile) */}
-          {isMobile && activeView === 'menu' && (
-            <div className="settings-menu-list">
-              <div className="settings-menu-item" onClick={() => setActiveView('profile')}>
-                 <div className="menu-item-left">
-                    <div className="menu-icon-bg profile"><UserIcon size={22} /></div>
-                    <span>Profilo & Casa</span>
-                 </div>
-                 <ChevronRight size={20} className="menu-chevron" />
-              </div>
-
-              <div className="settings-menu-item" onClick={() => setActiveView('security')}>
-                 <div className="menu-item-left">
-                    <div className="menu-icon-bg security"><Lock size={22} /></div>
-                    <span>Sicurezza</span>
-                 </div>
-                 <ChevronRight size={20} className="menu-chevron" />
-              </div>
-
-              <div className="settings-menu-item" onClick={() => setActiveView('customization')}>
-                 <div className="menu-item-left">
-                    <div className="menu-icon-bg customization"><Palette size={22} /></div>
-                    <span>Personalizzazione</span>
-                 </div>
-                 <ChevronRight size={20} className="menu-chevron" />
-              </div>
-
-              <div className="settings-menu-item" onClick={() => setActiveView('privacy')}>
-                 <div className="menu-item-left">
-                    <div className="menu-icon-bg privacy"><ShieldCheck size={22} /></div>
-                    <span>Privacy Policy</span>
-                 </div>
-                 <ChevronRight size={20} className="menu-chevron" />
-              </div>
+        <div className={`settings-layout-wrapper ${!isMobile ? 'desktop' : ''}`}>
+          {/* Sidebar / Menu Column */}
+          {(!isMobile || activeView === 'menu') && (
+            <div className="settings-navigation-column">
+              {renderMenuList()}
             </div>
           )}
 
-          {/* DESKTOP GRID / MOBILE PANELS */}
-          {(!isMobile || activeView === 'profile') && renderProfileForm()}
-          {(!isMobile || activeView === 'security') && renderSecurityForm()}
-          {(!isMobile || activeView === 'customization') && renderCustomizationForm()}
-          {(!isMobile || activeView === 'privacy') && renderPrivacyPolicy()}
+          {/* Content Column */}
+          {activeView !== 'menu' && (
+            <div className="settings-content-column">
+              {activeView === 'profile' && renderProfileForm()}
+              {activeView === 'security' && renderSecurityForm()}
+              {activeView === 'customization' && renderCustomizationView()}
+              {activeView === 'privacy' && renderPrivacyPolicy()}
+            </div>
+          )}
         </div>
       </div>
     </div>

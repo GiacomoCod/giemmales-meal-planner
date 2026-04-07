@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { BookOpen, Plus, Trash2, X, Pencil, ShoppingCart, Check, Settings, MoreVertical, List, Eye, Users } from 'lucide-react';
+import { BookOpen, Plus, Trash2, X, Pencil, ShoppingCart, Check, Settings, MoreVertical, List, Eye } from 'lucide-react';
 import type { Recipe, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
+import { TagManagerModal } from './TagManagerModal';
 import cookbookImg from '../assets/cookbook-3d.png';
 import './RecipesSection.css';
 
@@ -24,9 +25,6 @@ interface RecipesSectionProps {
   onDeleteTag: (tagId: string) => void;
 }
 
-const TAG_COLORS = [
-  '#ffecf1', '#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#f1f8e9', '#e0f2f1', '#fce4ec'
-];
 
 export function RecipesSection({
   isMobile,
@@ -49,24 +47,11 @@ export function RecipesSection({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showModalDeleteConfirm, setShowModalDeleteConfirm] = useState(false);
   const [showTagSettings, setShowTagSettings] = useState(false);
-  const [newTagLabel, setNewTagLabel] = useState('');
-  const [showTagDeleteConfirm, setShowTagDeleteConfirm] = useState<string | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showRecipesSheet, setShowRecipesSheet] = useState(false);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
   const [swipingId, setSwipingId] = useState<string | null>(null);
-
-  const handleCreateTag = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newTagLabel.trim()) {
-      const id = newTagLabel.trim().toLowerCase().replace(/\s+/g, '-');
-      const color = TAG_COLORS[tags.length % TAG_COLORS.length];
-      onAddTag({ id, label: newTagLabel.trim(), color });
-      setNewTagLabel('');
-    }
-  };
-
   // Swipe logic
   const handleTouchStart = (e: React.TouchEvent, id: string) => {
     setTouchStartX(e.touches[0].clientX);
@@ -460,89 +445,14 @@ export function RecipesSection({
       </main>
 
       {showTagSettings && (
-        <div className={`modal-overlay ${isMobile ? 'management-sheet-overlay' : ''}`} onClick={() => {
-          setShowTagSettings(false);
-          setShowTagDeleteConfirm(null);
-        }}>
-          <div className={isMobile ? 'management-sheet-content' : 'tag-modal'} onClick={e => e.stopPropagation()}>
-            {isMobile ? (
-              <div className="management-sheet-header">
-                <h3><Users size={24} /> Gestione Targhette</h3>
-                <button className="management-sheet-close" onClick={() => setShowTagSettings(false)}>
-                  <X size={24} />
-                </button>
-              </div>
-            ) : (
-              <div className="modal-header">
-                <div className="modal-title-with-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <h3>Gestione Targhette</h3>
-                  <InfoTooltip text="Le targhette servono per firmare le tue ricette e assegnare i pasti. Qui puoi aggiungere nuovi nomi o rimuovere quelli esistenti." />
-                </div>
-                <button className="modal-close" onClick={() => {
-                  setShowTagSettings(false);
-                  setShowTagDeleteConfirm(null);
-                }}><X size={20} /></button>
-              </div>
-            )}
-            
-            <div className={isMobile ? 'management-sheet-body' : ''}>
-              <div className="tags-list-current">
-                {tags.map(tag => (
-                  <div key={tag.id} className="tag-item-editor">
-                    <div className="tag-badge-preview" style={{ backgroundColor: tag.color }}>
-                      {tag.label}
-                    </div>
-                    
-                    {showTagDeleteConfirm === tag.id ? (
-                      <div className="delete-confirm-inline">
-                        <button 
-                          className="confirm-btn-mini" 
-                          onClick={() => {
-                            onDeleteTag(tag.id);
-                            setShowTagDeleteConfirm(null);
-                          }}
-                          title="Conferma eliminazione"
-                        >
-                          <Check size={18} strokeWidth={3} />
-                        </button>
-                        <button 
-                          className="cancel-btn-mini" 
-                          onClick={() => setShowTagDeleteConfirm(null)}
-                          title="Annulla"
-                        >
-                          <X size={18} strokeWidth={3} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button 
-                        className="tag-delete-btn" 
-                        onClick={() => setShowTagDeleteConfirm(tag.id)}
-                        disabled={tags.length <= 1}
-                        title="Elimina targhetta"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <form className="f-add-tag-form" onSubmit={handleCreateTag}>
-                <input 
-                  type="text" 
-                  placeholder="Nome persona..." 
-                  value={newTagLabel}
-                  onChange={e => setNewTagLabel(e.target.value)}
-                />
-                <button type="submit" className="f-add-tag-submit">
-                  <Plus size={24} />
-                </button>
-              </form>
-              
-              {!isMobile && <p className="modal-hint">Le targhette permettono di firmare le ricette e assegnare i pasti.</p>}
-            </div>
-          </div>
-        </div>
+        <TagManagerModal 
+          tags={tags}
+          onAddTag={onAddTag}
+          onDeleteTag={onDeleteTag}
+          onClose={() => setShowTagSettings(false)}
+          title="Firme Ricette"
+          hint="Le targhette permettono di firmare le ricette per indicare chi le ha create."
+        />
       )}
     </>
   );

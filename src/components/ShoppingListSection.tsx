@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Check, Trash2, X, Store, Home, Search, Sparkles, ShoppingBag, Pill, MoreVertical } from 'lucide-react';
 import type { ShoppingItem } from '../types';
 import shoppingCartImg from '../assets/shopping-cart-3d.png';
+import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import './ShoppingListSection.css';
 
 interface ShoppingListSectionProps {
@@ -40,6 +41,11 @@ export function ShoppingListSection({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showSuggestionSettings, setShowSuggestionSettings] = useState(false);
+  
+  const { transform: sugSheetTransform, handlers: sugSheetHandlers } = useSwipeToDismiss(() => {
+    setShowSuggestionSettings(false);
+    setShowMoreMenu(false);
+  }, 100, showSuggestionSettings);
   
   const [newSugName, setNewSugName] = useState('');
   const [newSugCat, setNewSugCat] = useState<'supermarket' | 'home' | 'medicine'>('supermarket');
@@ -258,17 +264,19 @@ export function ShoppingListSection({
                        <Plus size={22} className={expandedCategories[cat.id] ? 'rotate-45' : ''} />
                     </div>
                   </div>
-                  {expandedCategories[cat.id] && (
-                    <div className="s-accordion-content">
-                       <ul className="s-items-list">
-                          {cat.items.length === 0 ? (
-                            <div className="s-empty-small">La lista è vuota</div>
-                          ) : (
-                            cat.items.map(renderItem)
-                          )}
-                       </ul>
+                  <div className={`s-accordion-content-wrapper ${expandedCategories[cat.id] ? 'is-open' : ''}`}>
+                    <div className="s-accordion-content-inner">
+                      <div className="s-accordion-content">
+                         <ul className="s-items-list">
+                            {cat.items.length === 0 ? (
+                              <div className="s-empty-small">La lista è vuota</div>
+                            ) : (
+                              cat.items.map(renderItem)
+                            )}
+                         </ul>
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -335,8 +343,14 @@ export function ShoppingListSection({
       )}
 
       {showSuggestionSettings && (
-        <div className="management-sheet-overlay" onClick={() => setShowSuggestionSettings(false)}>
-          <div className="management-sheet-content" onClick={e => e.stopPropagation()}>
+        <div className="bottom-sheet-overlay" onClick={() => setShowSuggestionSettings(false)}>
+          <div 
+            className="bottom-sheet-content" 
+            onClick={e => e.stopPropagation()}
+            style={{ transform: sugSheetTransform }}
+            {...sugSheetHandlers}
+          >
+            <div className="bottom-sheet-drag-handle" />
             <div className="management-sheet-header">
               <h3><Sparkles size={24} /> Suggerimenti</h3>
               <button className="management-sheet-close" onClick={() => setShowSuggestionSettings(false)}>
