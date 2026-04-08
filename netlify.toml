@@ -16,3 +16,9 @@
   to = "/.netlify/functions/push-send-test"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/api/push/send-reminder"
+  to = "/.netlify/functions/push-send-reminder"
+  status = 200
+  force = true

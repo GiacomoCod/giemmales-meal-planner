@@ -1,0 +1,196 @@
+const { applicationDefault, cert, getApps, initializeApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const { getMessaging } = require('firebase-admin/messaging');
+
+const REMINDER_TEMPLATES = {
+  'meal-plan': {
+    title: 'Promemoria Menu',
+    body: 'Controlla il menu di oggi prima di cena.',
+    url: '/'
+  },
+  shopping: {
+    title: 'Promemoria Spesa',
+    body: 'Hai elementi nella lista della spesa da controllare.',
+    url: '/?tab=shopping'
+  },
+  'weekly-plan': {
+    title: 'Pianificazione Settimanale',
+    body: 'Aggiorna il menu della prossima settimana.',
+    url: '/?tab=planner'
+  }
+};
+
+const getPushCollectionPath = (profileId) =>
+  profileId === 'giemmale' ? 'pushSubscriptions' : `profiles/${profileId}/pushSubscriptions`;
+
+const parseServiceAccount = (rawValue) => {
+  if (!rawValue) return null;
+
+  const parsed =
+    rawValue.trim().startsWith('{')
+      ? JSON.parse(rawValue)
+      : JSON.parse(Buffer.from(rawValue, 'base64').toString('utf-8'));
+
+  const projectId = parsed.project_id || parsed.projectId;
+  const clientEmail = parsed.client_email || parsed.clientEmail;
+  const privateKeyRaw = parsed.private_key || parsed.privateKey;
+  const privateKey = typeof privateKeyRaw === 'string' ? privateKeyRaw.replace(/\\n/g, '\n') : '';
+
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON incompleto: servono project_id, client_email, private_key');
+  }
+
+  return { projectId, clientEmail, privateKey };
+};
+
+const getAdminApp = () => {
+  if (getApps().length > 0) {
+    return getApps()[0];
+  }
+
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (serviceAccountJson) {
+    const serviceAccount = parseServiceAccount(serviceAccountJson);
+    return initializeApp({ credential: cert(serviceAccount) });
+  }
+
+  return initializeApp({ credential: applicationDefault() });
+};
+
+const isUnauthorized = (event) => {
+  const expectedApiKey = process.env.PUSH_TEST_API_KEY;
+  if (!expectedApiKey) return false;
+
+  const fromHeader = event.headers['x-api-key'];
+  const auth = event.headers.authorization || '';
+  const bearerToken = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const providedApiKey = fromHeader || bearerToken;
+
+  return providedApiKey !== expectedApiKey;
+};
+
+const parseBody = (event) => {
+  if (!event.body) return {};
+  return JSON.parse(event.body);
+};
+
+const sendJson = (statusCode, body) => ({
+  statusCode,
+  headers: { 'content-type': 'application/json; charset=utf-8' },
+  body: JSON.stringify(body)
+});
+
+exports.handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return sendJson(405, { ok: false, error: 'Method not allowed. Use POST.' });
+  }
+
+  if (isUnauthorized(event)) {
+    return sendJson(401, { ok: false, error: 'Unauthorized' });
+  }
+
+  try {
+    const payload = parseBody(event);
+    const profileId = String(payload.profileId || '').trim();
+    const reminderType = String(payload.reminderType || 'meal-plan').trim();
+
+    if (!profileId) {
+      return sendJson(400, { ok: false, error: 'profileId is required' });
+    }
+
+    if (!REMINDER_TEMPLATES[reminderType]) {
+      return sendJson(400, {
+        ok: false,
+        error: `reminderType non valido: ${reminderType}`,
+        allowed: Object.keys(REMINDER_TEMPLATES)
+      });
+    }
+
+    const template = REMINDER_TEMPLATES[reminderType];
+    const title = String(payload.title || template.title).trim();
+    const body = String(payload.body || template.body).trim();
+    const url = String(payload.url || template.url).trim();
+
+    const app = getAdminApp();
+    const firestore = getFirestore(app);
+    const messaging = getMessaging(app);
+
+    const collectionPath = getPushCollectionPath(profileId);
+    const snapshot = await firestore
+      .collection(collectionPath)
+      .where('enabled', '==', true)
+      .limit(500)
+      .get();
+
+    const tokens = snapshot.docs
+      .map((d) => d.get('token'))
+      .filter((token) => typeof token === 'string' && token.length > 0);
+
+    if (tokens.length === 0) {
+      return sendJson(200, {
+        ok: true,
+        profileId,
+        reminderType,
+        sent: 0,
+        failed: 0,
+        invalidTokensRemoved: 0,
+        message: 'Nessun dispositivo registrato.'
+      });
+    }
+
+    const response = await messaging.sendEachForMulticast({
+      tokens,
+      notification: { title, body },
+      webpush: {
+        fcmOptions: { link: url }
+      },
+      data: { url, reminderType }
+    });
+
+    const invalidTokenCodes = new Set([
+      'messaging/invalid-registration-token',
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-argument'
+    ]);
+
+    const invalidTokens = [];
+    const failureDetails = [];
+    response.responses.forEach((item, index) => {
+      if (!item.success) {
+        const code = item.error?.code || 'unknown';
+        const message = item.error?.message || 'Unknown FCM error';
+        const token = tokens[index];
+
+        failureDetails.push({ token, code, message });
+        console.error('[push-send-reminder] FCM send failure', { token, code, message });
+
+        if (invalidTokenCodes.has(code)) {
+          invalidTokens.push(token);
+        }
+      }
+    });
+
+    if (invalidTokens.length > 0) {
+      const deletePromises = invalidTokens.map((token) =>
+        firestore.collection(collectionPath).doc(encodeURIComponent(token)).delete()
+      );
+      await Promise.allSettled(deletePromises);
+    }
+
+    return sendJson(200, {
+      ok: true,
+      profileId,
+      reminderType,
+      sent: response.successCount,
+      failed: response.failureCount,
+      invalidTokensRemoved: invalidTokens.length,
+      failures: failureDetails
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return sendJson(500, {
+      ok: false,
+      error: message
+    });
+  }
+};

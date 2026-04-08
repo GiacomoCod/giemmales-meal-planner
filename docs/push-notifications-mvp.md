@@ -66,6 +66,34 @@ curl -X POST "https://<tuo-dominio>/api/push/send-test" \
   -d '{"profileId":"giemmale","title":"Test Push","body":"Prima push end-to-end","url":"/"}'
 ```
 
+## 7) Endpoint reminder "vero" (template-based)
+È stato aggiunto anche:
+- `POST /api/push/send-reminder`
+- Function: `netlify/functions/push-send-reminder.cjs`
+
+Body minimo:
+```json
+{
+  "profileId": "giemmale",
+  "reminderType": "meal-plan"
+}
+```
+
+`reminderType` supportati:
+- `meal-plan`
+- `shopping`
+- `weekly-plan`
+
+Puoi sovrascrivere opzionalmente `title`, `body`, `url`.
+
+Esempio `curl` reminder:
+```bash
+curl -X POST "https://<tuo-dominio>/api/push/send-reminder" \
+  -H "content-type: application/json" \
+  -H "x-api-key: <PUSH_TEST_API_KEY>" \
+  -d '{"profileId":"giemmale","reminderType":"weekly-plan"}'
+```
+
 ## 6) Note importanti
 - iOS supporta Web Push solo da PWA installata su Home Screen.
 - Se permesso è `denied`, va riabilitato manualmente dalle impostazioni browser.
