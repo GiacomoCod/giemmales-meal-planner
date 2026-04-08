@@ -9,6 +9,26 @@ const DEFAULT_URL = '/';
 const getPushCollectionPath = (profileId) =>
   profileId === 'giemmale' ? 'pushSubscriptions' : `profiles/${profileId}/pushSubscriptions`;
 
+const parseServiceAccount = (rawValue) => {
+  if (!rawValue) return null;
+
+  const parsed =
+    rawValue.trim().startsWith('{')
+      ? JSON.parse(rawValue)
+      : JSON.parse(Buffer.from(rawValue, 'base64').toString('utf-8'));
+
+  const projectId = parsed.project_id || parsed.projectId;
+  const clientEmail = parsed.client_email || parsed.clientEmail;
+  const privateKeyRaw = parsed.private_key || parsed.privateKey;
+  const privateKey = typeof privateKeyRaw === 'string' ? privateKeyRaw.replace(/\\n/g, '\n') : '';
+
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON incompleto: servono project_id, client_email, private_key');
+  }
+
+  return { projectId, clientEmail, privateKey };
+};
+
 const getAdminApp = () => {
   if (getApps().length > 0) {
     return getApps()[0];
@@ -16,7 +36,7 @@ const getAdminApp = () => {
 
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (serviceAccountJson) {
-    const serviceAccount = JSON.parse(serviceAccountJson);
+    const serviceAccount = parseServiceAccount(serviceAccountJson);
     return initializeApp({ credential: cert(serviceAccount) });
   }
 
@@ -140,9 +160,13 @@ export const handler = async (event) => {
       failures: failureDetails
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     return sendJson(500, {
       ok: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: message,
+      hint: message.includes('invalid-credential')
+        ? 'Controlla FIREBASE_SERVICE_ACCOUNT_JSON: JSON valido, campi project_id/client_email/private_key e private_key con newline corretti.'
+        : undefined
     });
   }
 };
