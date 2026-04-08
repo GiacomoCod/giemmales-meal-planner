@@ -116,7 +116,10 @@ const sendPushToProfile = async ({ profileId, title, body, url, extraData = {} }
   await Promise.all(
     subscriptions.map(async ({ docRef, subscription, meta }) => {
       try {
-        await webpush.sendNotification(subscription, payload);
+        await webpush.sendNotification(subscription, payload, {
+          TTL: 60,
+          urgency: 'high'
+        });
         sent += 1;
       } catch (error) {
         const statusCode = error?.statusCode || 0;
