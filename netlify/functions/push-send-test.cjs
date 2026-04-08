@@ -1,70 +1,8 @@
-const { applicationDefault, cert, getApps, initializeApp } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
-const { getMessaging } = require('firebase-admin/messaging');
+const { isUnauthorized, parseBody, sendJson, sendPushToProfile } = require('./_push-common.cjs');
 
 const DEFAULT_TITLE = 'VibesPlanning';
 const DEFAULT_BODY = 'Hai un nuovo promemoria.';
 const DEFAULT_URL = '/';
-
-const getPushCollectionPath = (profileId) =>
-  profileId === 'giemmale' ? 'pushSubscriptions' : `profiles/${profileId}/pushSubscriptions`;
-
-const parseServiceAccount = (rawValue) => {
-  if (!rawValue) return null;
-
-  const parsed =
-    rawValue.trim().startsWith('{')
-      ? JSON.parse(rawValue)
-      : JSON.parse(Buffer.from(rawValue, 'base64').toString('utf-8'));
-
-  const projectId = parsed.project_id || parsed.projectId;
-  const clientEmail = parsed.client_email || parsed.clientEmail;
-  const privateKeyRaw = parsed.private_key || parsed.privateKey;
-  const privateKey = typeof privateKeyRaw === 'string' ? privateKeyRaw.replace(/\\n/g, '\n') : '';
-
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON incompleto: servono project_id, client_email, private_key');
-  }
-
-  return { projectId, clientEmail, privateKey };
-};
-
-const getAdminApp = () => {
-  if (getApps().length > 0) {
-    return getApps()[0];
-  }
-
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (serviceAccountJson) {
-    const serviceAccount = parseServiceAccount(serviceAccountJson);
-    return initializeApp({ credential: cert(serviceAccount) });
-  }
-
-  return initializeApp({ credential: applicationDefault() });
-};
-
-const isUnauthorized = (event) => {
-  const expectedApiKey = process.env.PUSH_TEST_API_KEY;
-  if (!expectedApiKey) return false;
-
-  const fromHeader = event.headers['x-api-key'];
-  const auth = event.headers.authorization || '';
-  const bearerToken = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  const providedApiKey = fromHeader || bearerToken;
-
-  return providedApiKey !== expectedApiKey;
-};
-
-const parseBody = (event) => {
-  if (!event.body) return {};
-  return JSON.parse(event.body);
-};
-
-const sendJson = (statusCode, body) => ({
-  statusCode,
-  headers: { 'content-type': 'application/json; charset=utf-8' },
-  body: JSON.stringify(body)
-});
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -86,87 +24,21 @@ exports.handler = async (event) => {
       return sendJson(400, { ok: false, error: 'profileId is required' });
     }
 
-    const app = getAdminApp();
-    const firestore = getFirestore(app);
-    const messaging = getMessaging(app);
-
-    const collectionPath = getPushCollectionPath(profileId);
-    const snapshot = await firestore
-      .collection(collectionPath)
-      .where('enabled', '==', true)
-      .limit(500)
-      .get();
-
-    const tokens = snapshot.docs
-      .map((d) => d.get('token'))
-      .filter((token) => typeof token === 'string' && token.length > 0);
-
-    if (tokens.length === 0) {
-      return sendJson(200, {
-        ok: true,
-        profileId,
-        sent: 0,
-        failed: 0,
-        invalidTokensRemoved: 0,
-        message: 'Nessun dispositivo registrato.'
-      });
-    }
-
-    const response = await messaging.sendEachForMulticast({
-      tokens,
-      notification: { title, body },
-      webpush: {
-        fcmOptions: { link: url }
-      },
-      data: { url }
-    });
-
-    const invalidTokenCodes = new Set([
-      'messaging/invalid-registration-token',
-      'messaging/registration-token-not-registered',
-      'messaging/invalid-argument'
-    ]);
-
-    const invalidTokens = [];
-    const failureDetails = [];
-    response.responses.forEach((item, index) => {
-      if (!item.success) {
-        const code = item.error?.code || 'unknown';
-        const message = item.error?.message || 'Unknown FCM error';
-        const token = tokens[index];
-
-        failureDetails.push({ token, code, message });
-        console.error('[push-send-test] FCM send failure', { token, code, message });
-
-        if (invalidTokenCodes.has(code)) {
-          invalidTokens.push(token);
-        }
-      }
-    });
-
-    if (invalidTokens.length > 0) {
-      const deletePromises = invalidTokens.map((token) =>
-        firestore.collection(collectionPath).doc(encodeURIComponent(token)).delete()
-      );
-      await Promise.allSettled(deletePromises);
-    }
+    const result = await sendPushToProfile({ profileId, title, body, url });
 
     return sendJson(200, {
       ok: true,
       profileId,
-      sent: response.successCount,
-      failed: response.failureCount,
-      invalidTokensRemoved: invalidTokens.length,
-      failures: failureDetails
+      sent: result.sent,
+      failed: result.failed,
+      invalidSubscriptionsRemoved: result.invalidSubscriptionsRemoved,
+      failures: result.failures,
+      message: result.message
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
     return sendJson(500, {
       ok: false,
-      error: message,
-      hint: message.includes('invalid-credential')
-        ? 'Controlla FIREBASE_SERVICE_ACCOUNT_JSON: JSON valido, campi project_id/client_email/private_key e private_key con newline corretti.'
-        : undefined
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 };

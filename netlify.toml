@@ -9,7 +9,7 @@
 
 [functions]
   node_bundler = "zisi"
-  external_node_modules = ["firebase-admin"]
+  external_node_modules = ["firebase-admin", "web-push"]
 
 [[redirects]]
   from = "/api/push/send-test"

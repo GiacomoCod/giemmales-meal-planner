@@ -1,6 +1,5 @@
 import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
-import { deleteToken, getMessaging, getToken, isSupported, type Messaging } from 'firebase/messaging';
-import { app, db } from './firebase';
+import { db } from './firebase';
 
 type PushPermissionState = NotificationPermission | 'unsupported';
 
@@ -11,36 +10,23 @@ type PushStatus = {
 };
 
 const MESSAGING_SW_PATH = '/firebase-messaging-sw.js';
+const PUSH_SW_SCOPE = '/push-notifications/';
 const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
-let messagingInstancePromise: Promise<Messaging | null> | null = null;
 
 const getPushCollectionPath = (profileId: string) =>
   profileId === 'giemmale' ? 'pushSubscriptions' : `profiles/${profileId}/pushSubscriptions`;
 
-const getPushDocId = (token: string) => encodeURIComponent(token);
+const getPushDocId = (endpoint: string) => encodeURIComponent(endpoint);
 
 export const isPushSupportedInBrowser = () => {
   if (typeof window === 'undefined') return false;
-  return 'Notification' in window && 'serviceWorker' in navigator;
-};
-
-const getMessagingInstance = async () => {
-  if (!messagingInstancePromise) {
-    messagingInstancePromise = (async () => {
-      if (!isPushSupportedInBrowser()) return null;
-      const messagingSupported = await isSupported();
-      if (!messagingSupported) return null;
-      return getMessaging(app);
-    })();
-  }
-
-  return messagingInstancePromise;
+  return 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
 };
 
 const getServiceWorkerRegistration = async () => {
-  const registration = await navigator.serviceWorker.register(MESSAGING_SW_PATH);
-  await navigator.serviceWorker.ready;
-  return registration;
+  const existing = await navigator.serviceWorker.getRegistration(PUSH_SW_SCOPE);
+  if (existing) return existing;
+  return navigator.serviceWorker.register(MESSAGING_SW_PATH, { scope: PUSH_SW_SCOPE });
 };
 
 const ensureVapidKey = () => {
@@ -50,25 +36,47 @@ const ensureVapidKey = () => {
   return vapidKey;
 };
 
-const getCurrentToken = async () => {
-  const messaging = await getMessagingInstance();
-  if (!messaging) return null;
-
-  const registration = await getServiceWorkerRegistration();
-  const token = await getToken(messaging, {
-    vapidKey: ensureVapidKey(),
-    serviceWorkerRegistration: registration
-  });
-
-  return token || null;
+const urlBase64ToUint8Array = (base64String: string) => {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 };
 
-const saveTokenToFirestore = async (profileId: string, userId: string, token: string) => {
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+};
+
+const getCurrentSubscription = async () => {
+  const registration = await getServiceWorkerRegistration();
+  return registration.pushManager.getSubscription();
+};
+
+const saveSubscriptionToFirestore = async (profileId: string, userId: string, subscription: PushSubscription) => {
   const path = getPushCollectionPath(profileId);
+  const rawP256dh = subscription.getKey('p256dh');
+  const rawAuth = subscription.getKey('auth');
+  if (!rawP256dh || !rawAuth) {
+    throw new Error('Impossibile leggere le chiavi della subscription push.');
+  }
+
+  const p256dh = arrayBufferToBase64(rawP256dh);
+  const auth = arrayBufferToBase64(rawAuth);
+
   await setDoc(
-    doc(db, path, getPushDocId(token)),
+    doc(db, path, getPushDocId(subscription.endpoint)),
     {
-      token,
+      endpoint: subscription.endpoint,
+      keys: { p256dh, auth },
       userId,
       profileId,
       enabled: true,
@@ -82,9 +90,9 @@ const saveTokenToFirestore = async (profileId: string, userId: string, token: st
   );
 };
 
-const deleteTokenFromFirestore = async (profileId: string, token: string) => {
+const deleteSubscriptionFromFirestore = async (profileId: string, endpoint: string) => {
   const path = getPushCollectionPath(profileId);
-  await deleteDoc(doc(db, path, getPushDocId(token)));
+  await deleteDoc(doc(db, path, getPushDocId(endpoint)));
 };
 
 export const getPushStatus = async (profileId: string): Promise<PushStatus> => {
@@ -97,14 +105,14 @@ export const getPushStatus = async (profileId: string): Promise<PushStatus> => {
     return { supported: true, permission, subscribed: false };
   }
 
-  const token = await getCurrentToken();
-  if (!token) {
+  const subscription = await getCurrentSubscription();
+  if (!subscription) {
     return { supported: true, permission, subscribed: false };
   }
 
   const path = getPushCollectionPath(profileId);
-  const tokenDoc = await getDoc(doc(db, path, getPushDocId(token)));
-  return { supported: true, permission, subscribed: tokenDoc.exists() };
+  const subDoc = await getDoc(doc(db, path, getPushDocId(subscription.endpoint)));
+  return { supported: true, permission, subscribed: subDoc.exists() };
 };
 
 export const subscribeToPush = async (profileId: string, userId: string) => {
@@ -117,23 +125,26 @@ export const subscribeToPush = async (profileId: string, userId: string) => {
     throw new Error('Permesso notifiche non concesso.');
   }
 
-  const token = await getCurrentToken();
-  if (!token) {
-    throw new Error('Impossibile ottenere il token push.');
+  const registration = await getServiceWorkerRegistration();
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(ensureVapidKey())
+    });
   }
 
-  await saveTokenToFirestore(profileId, userId, token);
-  return token;
+  await saveSubscriptionToFirestore(profileId, userId, subscription);
+  return subscription.endpoint;
 };
 
 export const unsubscribeFromPush = async (profileId: string) => {
-  const messaging = await getMessagingInstance();
-  if (!messaging) return;
-
-  const token = await getCurrentToken();
-  if (token) {
-    await deleteTokenFromFirestore(profileId, token);
+  const subscription = await getCurrentSubscription();
+  if (!subscription) return;
+  await deleteSubscriptionFromFirestore(profileId, subscription.endpoint);
+  try {
+    await subscription.unsubscribe();
+  } catch {
+    // no-op
   }
-
-  await deleteToken(messaging);
 };
