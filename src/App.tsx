@@ -122,6 +122,89 @@ function App() {
   const [isDeletingAllInProgress, setIsDeletingAllInProgress] = useState(false);
   const undoTimeoutRef = useRef<any>(null);
   const hasSeededRef = useRef<Set<string>>(new Set());
+
+  const stripKnownNotificationEmoji = useCallback((text: string) => {
+    return String(text || '').replace(/^(🔔|📅|✨|🛒|💊|🏠|🍽️)\s*/, '');
+  }, []);
+
+  const stripPushTitlePrefix = useCallback((text: string) => {
+    const value = String(text || '');
+    if (!value.includes(' — ')) return value;
+
+    const [prefix, ...rest] = value.split(' — ');
+    if (rest.length === 0) return value;
+
+    const normalizedPrefix = prefix.trim().toLowerCase();
+    const isKnownPushTitle =
+      normalizedPrefix === 'planner di fiducia' ||
+      normalizedPrefix.startsWith('promemoria ') ||
+      normalizedPrefix.startsWith('pianificazione ');
+
+    if (!isKnownPushTitle) return value;
+    return rest.join(' — ').trim();
+  }, []);
+
+  const inferPushCategoryFromText = useCallback((text: string): 'events' | 'cleaning' | 'shopping' | 'weeklyMenu' | null => {
+    const value = String(text || '').toLowerCase();
+    if (!value) return null;
+
+    if (value.includes('prossima settimana') || value.includes('menu')) return 'weeklyMenu';
+    if (value.includes('mansioni') || value.includes("c'è da") || value.includes('casa ha bisogno di te')) return 'cleaning';
+    if (value.includes('spesa') || value.includes('comprare') || value.includes('supermercato') || value.includes('farmaci')) return 'shopping';
+    if (value.includes('agenda') || value.includes('eventi') || value.includes('evento')) return 'events';
+    return null;
+  }, []);
+
+  const getPushEmoji = useCallback((notification: NotificationItem) => {
+    const pushType = notification.type;
+    const reminderType = notification.reminderType;
+    const explicitType = notification.notificationType;
+
+    const fromExplicitType = (() => {
+      if (explicitType === 'events') return '📅';
+      if (explicitType === 'cleaning') return '✨';
+      if (explicitType === 'shopping') return '🛒';
+      if (explicitType === 'weeklyMenu') return '🍽️';
+      return null;
+    })();
+    if (fromExplicitType) return fromExplicitType;
+
+    if (pushType === 'events-due') return '📅';
+    if (pushType === 'cleaning-due') return '✨';
+    if (pushType === 'shopping-reminder') return '🛒';
+    if (pushType === 'weekly-menu-reminder') return '🍽️';
+
+    if (pushType === 'push-reminder') {
+      if (reminderType === 'shopping') return '🛒';
+      if (reminderType === 'meal-plan' || reminderType === 'weekly-plan') return '🍽️';
+      return '🔔';
+    }
+
+    if (pushType === 'push-test') {
+      const inferred = inferPushCategoryFromText(notification.text);
+      if (inferred === 'events') return '📅';
+      if (inferred === 'cleaning') return '✨';
+      if (inferred === 'shopping') return '🛒';
+      if (inferred === 'weeklyMenu') return '🍽️';
+      return '🔔';
+    }
+
+    const inferred = inferPushCategoryFromText(notification.text);
+    if (inferred === 'events') return '📅';
+    if (inferred === 'cleaning') return '✨';
+    if (inferred === 'shopping') return '🛒';
+    if (inferred === 'weeklyMenu') return '🍽️';
+    return null;
+  }, [inferPushCategoryFromText]);
+
+  const formatNotificationText = useCallback((notification: NotificationItem) => {
+    const isPushNotification = notification.source === 'push' || Boolean(notification.type);
+    const textWithoutEmoji = stripKnownNotificationEmoji(notification.text);
+    const baseText = isPushNotification ? stripPushTitlePrefix(textWithoutEmoji) : textWithoutEmoji;
+    const emoji = isPushNotification ? getPushEmoji(notification) : null;
+    if (!emoji) return baseText;
+    return `${emoji} ${baseText}`;
+  }, [getPushEmoji, stripKnownNotificationEmoji, stripPushTitlePrefix]);
   
   // Refs for closing dropdowns when clicking outside
   const profileDropdownRef = useRef<HTMLDivElement>(null);
@@ -1285,7 +1368,7 @@ function App() {
                   }}
                 >
                   <div className="mobile-notif-content">
-                    <p className="mobile-notif-text">{n.text}</p>
+                    <p className="mobile-notif-text">{formatNotificationText(n)}</p>
                     <span className="mobile-notif-time">{format(n.timestamp, 'HH:mm - d MMM', { locale: it })}</span>
                   </div>
                   
@@ -1499,7 +1582,7 @@ function App() {
                           }}
                         >
                           <div className="notif-content">
-                            <p className="notif-text">{n.text}</p>
+                            <p className="notif-text">{formatNotificationText(n)}</p>
                             <span className="notif-time">{format(n.timestamp, 'HH:mm')}</span>
                           </div>
                           

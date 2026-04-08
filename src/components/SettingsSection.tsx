@@ -4,6 +4,7 @@ import type { User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getPushStatus, isPushSupportedInBrowser, subscribeToPush, unsubscribeFromPush } from '../pushNotifications';
+import { InfoTooltip } from './InfoTooltip';
 import { 
   Save, 
   Lock, 
@@ -23,6 +24,30 @@ import {
   Bell
 } from 'lucide-react';
 import './SettingsSection.css';
+
+type PushNotificationKey = 'events' | 'cleaning' | 'shopping' | 'weeklyMenu';
+type PushNotificationPreferences = Record<PushNotificationKey, boolean>;
+
+const DEFAULT_PUSH_NOTIFICATION_PREFERENCES: PushNotificationPreferences = {
+  events: true,
+  cleaning: true,
+  shopping: true,
+  weeklyMenu: true
+};
+
+const normalizePushNotificationPreferences = (rawValue: unknown): PushNotificationPreferences => {
+  const base: PushNotificationPreferences = { ...DEFAULT_PUSH_NOTIFICATION_PREFERENCES };
+  if (!rawValue || typeof rawValue !== 'object') return base;
+
+  const typed = rawValue as Partial<PushNotificationPreferences>;
+  for (const key of Object.keys(base) as PushNotificationKey[]) {
+    if (typeof typed[key] === 'boolean') {
+      base[key] = typed[key] as boolean;
+    }
+  }
+
+  return base;
+};
 
 interface SettingsSectionProps {
   user: User | null;
@@ -58,6 +83,9 @@ export function SettingsSection({
   const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const [isPushStatusLoading, setIsPushStatusLoading] = useState(true);
   const [isPushUpdating, setIsPushUpdating] = useState(false);
+  const [pushPreferences, setPushPreferences] = useState<PushNotificationPreferences>(DEFAULT_PUSH_NOTIFICATION_PREFERENCES);
+  const [isPushPreferencesLoading, setIsPushPreferencesLoading] = useState(true);
+  const [isPushPreferencesUpdating, setIsPushPreferencesUpdating] = useState<PushNotificationKey | null>(null);
 
   // Sync active view when switching between mobile and desktop if needed
   useEffect(() => {
@@ -101,6 +129,36 @@ export function SettingsSection({
     };
 
     loadPushStatus();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeProfile.id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPushPreferences = async () => {
+      setIsPushPreferencesLoading(true);
+      try {
+        const settingsDoc = await getDoc(doc(db, `profiles/${activeProfile.id}/metadata`, 'settings'));
+        if (!mounted) return;
+        const data = settingsDoc.exists() ? settingsDoc.data() : {};
+        setPushPreferences(
+          normalizePushNotificationPreferences(
+            data.pushNotificationPreferences || data.pushPreferences || {}
+          )
+        );
+      } catch (err) {
+        console.error('Error loading push preferences:', err);
+        if (!mounted) return;
+        setPushPreferences({ ...DEFAULT_PUSH_NOTIFICATION_PREFERENCES });
+      } finally {
+        if (mounted) setIsPushPreferencesLoading(false);
+      }
+    };
+
+    loadPushPreferences();
 
     return () => {
       mounted = false;
@@ -373,6 +431,37 @@ export function SettingsSection({
     }
   };
 
+  const handleTogglePushPreference = async (key: PushNotificationKey) => {
+    if (isPushPreferencesLoading || isPushPreferencesUpdating) return;
+
+    setSuccessMsg(null);
+    setErrorMsg(null);
+
+    const nextPreferences = {
+      ...pushPreferences,
+      [key]: !pushPreferences[key]
+    };
+
+    setPushPreferences(nextPreferences);
+    setIsPushPreferencesUpdating(key);
+
+    try {
+      await setDoc(
+        doc(db, `profiles/${activeProfile.id}/metadata`, 'settings'),
+        { pushNotificationPreferences: nextPreferences },
+        { merge: true }
+      );
+      setSuccessMsg('Preferenze notifiche aggiornate.');
+    } catch (err) {
+      console.error(err);
+      setPushPreferences(pushPreferences);
+      const reason = err instanceof Error ? err.message : 'Errore sconosciuto';
+      setErrorMsg(`Impossibile salvare la preferenza. (${reason})`);
+    } finally {
+      setIsPushPreferencesUpdating(null);
+    }
+  };
+
   const renderNotificationsView = () => (
     <div className="settings-view-form">
       <div className="form-inner">
@@ -381,33 +470,108 @@ export function SettingsSection({
           Notifiche Push
         </h3>
 
-        <div className="customization-group notifications-group">
-          <h3>Stato Dispositivo</h3>
-          <div className="toggle-list">
-            <div
-              className={`toggle-item ${pushEnabled ? 'active' : ''} ${isPushStatusLoading || isPushUpdating ? 'is-loading' : ''}`}
-              onClick={handleTogglePush}
-            >
-              <div className="toggle-item-left">
-                <div className="section-icon-box notifications"><Bell size={18} /></div>
-                <div className="toggle-info">
-                  <span>{pushEnabled ? 'Notifiche attive' : 'Notifiche disattivate'}</span>
-                  <small>
-                    {isPushStatusLoading && 'Verifica stato in corso...'}
-                    {!isPushStatusLoading && pushPermission === 'unsupported' && 'Browser non supportato per Web Push.'}
-                    {!isPushStatusLoading && pushPermission === 'default' && 'Clicca per concedere il consenso.'}
-                    {!isPushStatusLoading && pushPermission === 'denied' && 'Permesso bloccato: abilita notifiche dalle impostazioni del browser.'}
-                    {!isPushStatusLoading && pushPermission === 'granted' && 'Dispositivo registrato per ricevere push.'}
-                  </small>
+        {/*
+          Category-level preferences are editable only when this device is
+          actively subscribed to push notifications.
+        */}
+        {(() => {
+          const arePushPreferencesDisabled =
+            isPushStatusLoading || isPushUpdating || !pushEnabled || pushPermission !== 'granted';
+
+          return (
+            <>
+              <div className="customization-group notifications-group">
+                <h3>Stato Dispositivo</h3>
+                <div className="toggle-list">
+                  <div
+                    className={`toggle-item ${pushEnabled ? 'active' : ''} ${isPushStatusLoading || isPushUpdating ? 'is-loading' : ''}`}
+                    onClick={handleTogglePush}
+                  >
+                    <div className="toggle-item-left">
+                      <div className="section-icon-box notifications"><Bell size={18} /></div>
+                      <div className="toggle-info">
+                        <span>{pushEnabled ? 'Notifiche attive' : 'Notifiche disattivate'}</span>
+                        <small>
+                          {isPushStatusLoading && 'Verifica stato in corso...'}
+                          {!isPushStatusLoading && pushPermission === 'unsupported' && 'Browser non supportato per Web Push.'}
+                          {!isPushStatusLoading && pushPermission === 'default' && 'Clicca per concedere il consenso.'}
+                          {!isPushStatusLoading && pushPermission === 'denied' && 'Permesso bloccato: abilita notifiche dalle impostazioni del browser.'}
+                          {!isPushStatusLoading && pushPermission === 'granted' && 'Dispositivo registrato per ricevere push.'}
+                        </small>
+                      </div>
+                    </div>
+                    <div className="toggle-switch"></div>
+                  </div>
                 </div>
+                <p className="push-hint">
+                  Le notifiche push sono legate al dispositivo corrente. Ripeti l&apos;attivazione su ogni browser/dispositivo che vuoi usare.
+                </p>
               </div>
-              <div className="toggle-switch"></div>
-            </div>
-          </div>
-          <p className="push-hint">
-            Le notifiche push sono legate al dispositivo corrente. Ripeti l&apos;attivazione su ogni browser/dispositivo che vuoi usare.
-          </p>
-        </div>
+
+              <div
+                className={`customization-group notifications-group push-preferences-group ${arePushPreferencesDisabled ? 'is-disabled' : ''}`}
+                aria-disabled={arePushPreferencesDisabled}
+              >
+                <div className="notifications-title-row">
+                  <h3>Tipi di Notifica</h3>
+                  <InfoTooltip
+                    position="right"
+                    text="Eventi e mansioni: reminder domani alle 20:00 e oggi alle 10:00. Spesa: martedì e venerdì alle 17:00, solo se la lista contiene elementi. Menu settimanale: domenica alle 20:00."
+                  />
+                </div>
+                <p className="push-hint push-types-subhint">
+                  Attiva/disattiva i tipi di notifiche che desideri ricevere
+                </p>
+                <div className="toggle-list">
+                  {[
+                    {
+                      key: 'events' as PushNotificationKey,
+                      label: 'Eventi calendario',
+                      icon: CalendarIcon
+                    },
+                    {
+                      key: 'cleaning' as PushNotificationKey,
+                      label: 'Mansioni pulizie',
+                      icon: Sparkles
+                    },
+                    {
+                      key: 'shopping' as PushNotificationKey,
+                      label: 'Lista spesa',
+                      icon: ShoppingCart
+                    },
+                    {
+                      key: 'weeklyMenu' as PushNotificationKey,
+                      label: 'Menu settimanale',
+                      icon: BookOpen
+                    }
+                  ].map((item) => (
+                    <div
+                      key={item.key}
+                      className={`toggle-item ${pushPreferences[item.key] ? 'active' : ''} ${isPushPreferencesLoading || isPushPreferencesUpdating === item.key ? 'is-loading' : ''}`}
+                      onClick={() => {
+                        if (arePushPreferencesDisabled) return;
+                        handleTogglePushPreference(item.key);
+                      }}
+                    >
+                      <div className="toggle-item-left">
+                        <div className="section-icon-box notifications"><item.icon size={18} /></div>
+                        <div className="toggle-info">
+                          <span>{item.label}</span>
+                        </div>
+                      </div>
+                      <div className="toggle-switch"></div>
+                    </div>
+                  ))}
+                </div>
+                <p className="push-hint">
+                  {arePushPreferencesDisabled
+                    ? 'Attiva prima le notifiche push del dispositivo per personalizzare questa sezione.'
+                    : 'Le preferenze sono legate al profilo. Se disattivi una categoria, non verranno inviati reminder automatici di quel tipo.'}
+                </p>
+              </div>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

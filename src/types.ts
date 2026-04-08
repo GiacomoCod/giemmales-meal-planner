@@ -65,6 +65,11 @@ export interface NotificationItem {
   text: string;
   timestamp: number;
   read: boolean;
+  source?: string;
+  type?: string;
+  reminderType?: string;
+  notificationType?: string;
+  url?: string;
 }
 
 export type CalendarEvent = {

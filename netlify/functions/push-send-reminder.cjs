@@ -1,4 +1,11 @@
-const { isUnauthorized, parseBody, sendJson, sendPushToProfile, writeInAppNotification } = require('./_push-common.cjs');
+const {
+  isUnauthorized,
+  parseBody,
+  sendJson,
+  sendPushToProfile,
+  writeInAppNotification,
+  isPushTypeEnabled
+} = require('./_push-common.cjs');
 
 const REMINDER_TEMPLATES = {
   'meal-plan': {
@@ -16,6 +23,18 @@ const REMINDER_TEMPLATES = {
     body: 'Aggiorna il menu della prossima settimana.',
     url: '/?tab=planner'
   }
+};
+
+const REMINDER_PREFERENCE_BY_TYPE = {
+  shopping: 'shopping',
+  'weekly-plan': 'weeklyMenu',
+  'meal-plan': 'weeklyMenu'
+};
+
+const REMINDER_EMOJI_BY_TYPE = {
+  shopping: '🛒',
+  'weekly-plan': '🍽️',
+  'meal-plan': '🍽️'
 };
 
 exports.handler = async (event) => {
@@ -44,6 +63,22 @@ exports.handler = async (event) => {
       });
     }
 
+    const preferenceType = REMINDER_PREFERENCE_BY_TYPE[reminderType];
+    if (preferenceType) {
+      const preferenceCheck = await isPushTypeEnabled({ profileId, type: preferenceType });
+      if (!preferenceCheck.enabled) {
+        return sendJson(200, {
+          ok: true,
+          profileId,
+          reminderType,
+          sent: 0,
+          disabledByUser: true,
+          notificationType: preferenceType,
+          message: `Notifiche ${preferenceType} disattivate nelle impostazioni.`
+        });
+      }
+    }
+
     const template = REMINDER_TEMPLATES[reminderType];
     const title = String(payload.title || template.title).trim();
     const body = String(payload.body || template.body).trim();
@@ -56,9 +91,10 @@ exports.handler = async (event) => {
       url,
       extraData: { reminderType }
     });
+    const emoji = REMINDER_EMOJI_BY_TYPE[reminderType] || '🔔';
     await writeInAppNotification({
       profileId,
-      text: `🔔 ${title} — ${body}`,
+      text: `${emoji} ${body}`,
       data: {
         type: 'push-reminder',
         reminderType,

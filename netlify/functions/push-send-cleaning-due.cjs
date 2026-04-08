@@ -5,7 +5,8 @@ const {
   sendPushToProfile,
   getFirestoreClient,
   getCollectionPath,
-  writeInAppNotification
+  writeInAppNotification,
+  isPushTypeEnabled
 } = require('./_push-common.cjs');
 
 const ROOM_LABELS = {
@@ -116,10 +117,11 @@ const persistDailyLocks = async ({ fresh, targetDateKey, reminderDateKey, now })
 const buildReminderMessage = ({ dueTasks, dayContext }) => {
   if (dueTasks.length === 1) {
     const task = dueTasks[0];
+    const body = `Ehi, ${dayContext.adverb} c'è da ${buildTaskSnippet(task)}, tu hai bisogno della tua casa quanto la tua casa ha bisogno di te!`;
     return {
       title: 'Planner di fiducia',
-      body: `Ehi, qui il tuo planner di fiducia: ${dayContext.adverb} c'è da ${buildTaskSnippet(task)}.`,
-      inAppText: `✨ ${dayContext.label}: ${buildTaskPreview(task)}`
+      body,
+      inAppText: `✨ ${body}`
     };
   }
 
@@ -128,11 +130,12 @@ const buildReminderMessage = ({ dueTasks, dayContext }) => {
     .map((t) => buildTaskPreview(t))
     .join(' • ');
   const remaining = dueTasks.length > 3 ? ` (+${dueTasks.length - 3} altre)` : '';
+  const body = `Ehi, ${dayContext.adverb} hai ${dueTasks.length} mansioni in scadenza: ${preview}${remaining}, tu hai bisogno della tua casa quanto la tua casa ha bisogno di te!`;
 
   return {
     title: 'Planner di fiducia',
-    body: `Ehi, ${dayContext.adverb} hai ${dueTasks.length} mansioni in scadenza: ${preview}${remaining}.`,
-    inAppText: `✨ ${dayContext.label}: ${dueTasks.length} mansioni (${preview}${remaining})`
+    body,
+    inAppText: `✨ ${body}`
   };
 };
 
@@ -154,6 +157,18 @@ exports.handler = async (event) => {
 
     if (!profileId) {
       return sendJson(400, { ok: false, error: 'profileId is required' });
+    }
+
+    const preferenceCheck = await isPushTypeEnabled({ profileId, type: 'cleaning' });
+    if (!preferenceCheck.enabled) {
+      return sendJson(200, {
+        ok: true,
+        profileId,
+        sent: 0,
+        disabledByUser: true,
+        notificationType: 'cleaning',
+        message: 'Notifiche mansioni disattivate nelle impostazioni.'
+      });
     }
 
     const tomorrowDate = addDaysUtc(new Date(), 1);

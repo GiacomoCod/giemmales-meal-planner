@@ -541,6 +541,17 @@
   margin-bottom: 1.5rem;
 }
 
+.notifications-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.notifications-title-row h3 {
+  margin: 0;
+}
+
 .toggle-list {
   display: flex;
   flex-direction: column;
@@ -665,4 +676,18 @@
   font-size: 0.88rem;
   line-height: 1.5;
   margin-top: 12px;
+}
+
+.push-types-subhint {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.push-preferences-group.is-disabled {
+  opacity: 0.5;
+  filter: saturate(0.7);
+}
+
+.push-preferences-group.is-disabled .toggle-list {
+  pointer-events: none;
 }

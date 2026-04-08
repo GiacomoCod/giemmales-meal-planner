@@ -5,7 +5,8 @@ const {
   sendPushToProfile,
   getFirestoreClient,
   getCollectionPath,
-  writeInAppNotification
+  writeInAppNotification,
+  isPushTypeEnabled
 } = require('./_push-common.cjs');
 
 const addDaysUtc = (dateObj, days) => new Date(dateObj.getTime() + days * 24 * 60 * 60 * 1000);
@@ -64,19 +65,21 @@ const buildReminderMessage = ({ events, dayContext }) => {
   if (events.length === 1) {
     const event = events[0];
     const preview = formatEventPreview(event);
+    const body = `Ehi, ${dayContext.adverb} hai in agenda: ${preview}, mi raccomando, nti' scurdà.`;
     return {
       title: 'Planner di fiducia',
-      body: `Ehi, ${dayContext.adverb} hai in agenda: ${preview}.`,
-      inAppText: `📅 ${dayContext.label}: ${preview}`
+      body,
+      inAppText: `📅 ${body}`
     };
   }
 
   const preview = events.slice(0, 3).map(formatEventPreview).join(' • ');
   const remaining = events.length > 3 ? ` (+${events.length - 3} altri)` : '';
+  const body = `Ehi, ${dayContext.adverb} hai ${events.length} eventi in agenda: ${preview}${remaining}, mi raccomando, nti' scurdà.`;
   return {
     title: 'Planner di fiducia',
-    body: `Ehi, ${dayContext.adverb} hai ${events.length} eventi in agenda: ${preview}${remaining}.`,
-    inAppText: `📅 ${dayContext.label}: ${events.length} eventi (${preview}${remaining})`
+    body,
+    inAppText: `📅 ${body}`
   };
 };
 
@@ -131,6 +134,18 @@ exports.handler = async (event) => {
 
     if (!profileId) {
       return sendJson(400, { ok: false, error: 'profileId is required' });
+    }
+
+    const preferenceCheck = await isPushTypeEnabled({ profileId, type: 'events' });
+    if (!preferenceCheck.enabled) {
+      return sendJson(200, {
+        ok: true,
+        profileId,
+        sent: 0,
+        disabledByUser: true,
+        notificationType: 'events',
+        message: 'Notifiche eventi disattivate nelle impostazioni.'
+      });
     }
 
     const tomorrowDate = addDaysUtc(new Date(), 1);

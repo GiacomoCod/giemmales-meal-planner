@@ -9,6 +9,33 @@ const getNotificationsCollectionPath = (profileId) =>
 const getCollectionPath = (profileId, collectionName) =>
   profileId === 'giemmale' ? collectionName : `profiles/${profileId}/${collectionName}`;
 
+const DEFAULT_PUSH_NOTIFICATION_PREFERENCES = {
+  events: true,
+  cleaning: true,
+  shopping: true,
+  weeklyMenu: true
+};
+
+const normalizePushPreferences = (rawPreferences = {}) => {
+  const base = { ...DEFAULT_PUSH_NOTIFICATION_PREFERENCES };
+  if (!rawPreferences || typeof rawPreferences !== 'object') return base;
+
+  for (const key of Object.keys(DEFAULT_PUSH_NOTIFICATION_PREFERENCES)) {
+    if (typeof rawPreferences[key] === 'boolean') {
+      base[key] = rawPreferences[key];
+    }
+  }
+  return base;
+};
+
+const getSettingsDocPaths = (profileId) => {
+  const paths = [`profiles/${profileId}/metadata/settings`];
+  if (profileId === 'giemmale') {
+    paths.push('metadata/settings');
+  }
+  return paths;
+};
+
 const parseServiceAccount = (rawValue) => {
   if (!rawValue) return null;
 
@@ -44,6 +71,33 @@ const getAdminApp = () => {
 const getFirestoreClient = () => {
   const app = getAdminApp();
   return getFirestore(app);
+};
+
+const getPushNotificationPreferences = async (profileId) => {
+  const firestore = getFirestoreClient();
+  const paths = getSettingsDocPaths(profileId);
+
+  for (const path of paths) {
+    const settingsDoc = await firestore.doc(path).get();
+    if (!settingsDoc.exists) continue;
+    const data = settingsDoc.data() || {};
+    const rawPreferences = data.pushNotificationPreferences || data.pushPreferences || {};
+    return {
+      preferences: normalizePushPreferences(rawPreferences),
+      sourcePath: path
+    };
+  }
+
+  return {
+    preferences: { ...DEFAULT_PUSH_NOTIFICATION_PREFERENCES },
+    sourcePath: null
+  };
+};
+
+const isPushTypeEnabled = async ({ profileId, type }) => {
+  const { preferences, sourcePath } = await getPushNotificationPreferences(profileId);
+  const enabled = Boolean(preferences[type]);
+  return { enabled, preferences, sourcePath };
 };
 
 const configureWebPush = () => {
@@ -181,8 +235,9 @@ const isUnauthorized = (event) => {
   const expectedApiKey = process.env.PUSH_TEST_API_KEY;
   if (!expectedApiKey) return false;
 
-  const fromHeader = event.headers['x-api-key'];
-  const auth = event.headers.authorization || '';
+  const headers = event?.headers || {};
+  const fromHeader = headers['x-api-key'] || headers['X-API-Key'];
+  const auth = headers.authorization || '';
   const bearerToken = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   const providedApiKey = fromHeader || bearerToken;
 
@@ -208,5 +263,8 @@ module.exports = {
   getSubscriptionsDebug,
   getFirestoreClient,
   getCollectionPath,
-  writeInAppNotification
+  writeInAppNotification,
+  getPushNotificationPreferences,
+  isPushTypeEnabled,
+  DEFAULT_PUSH_NOTIFICATION_PREFERENCES
 };

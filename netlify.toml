@@ -17,6 +17,12 @@
 [functions."push-schedule-cleaning-due"]
   schedule = "@hourly"
 
+[functions."push-schedule-shopping-reminder"]
+  schedule = "@hourly"
+
+[functions."push-schedule-weekly-menu-reminder"]
+  schedule = "@hourly"
+
 [[redirects]]
   from = "/api/push/send-test"
   to = "/.netlify/functions/push-send-test"
@@ -44,5 +50,17 @@
 [[redirects]]
   from = "/api/push/send-events-due"
   to = "/.netlify/functions/push-send-events-due"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/push/send-shopping-reminder"
+  to = "/.netlify/functions/push-send-shopping-reminder"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/push/send-weekly-menu-reminder"
+  to = "/.netlify/functions/push-send-weekly-menu-reminder"
   status = 200
   force = true

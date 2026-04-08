@@ -4,6 +4,14 @@ const DEFAULT_TITLE = 'VibesPlanning';
 const DEFAULT_BODY = 'Hai un nuovo promemoria.';
 const DEFAULT_URL = '/';
 
+const getEmojiByNotificationType = (notificationType) => {
+  if (notificationType === 'events') return '📅';
+  if (notificationType === 'cleaning') return '✨';
+  if (notificationType === 'shopping') return '🛒';
+  if (notificationType === 'weeklyMenu') return '🍽️';
+  return '🔔';
+};
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return sendJson(405, { ok: false, error: 'Method not allowed. Use POST.' });
@@ -19,17 +27,20 @@ exports.handler = async (event) => {
     const title = String(payload.title || DEFAULT_TITLE).trim();
     const body = String(payload.body || DEFAULT_BODY).trim();
     const url = String(payload.url || DEFAULT_URL).trim();
+    const notificationType = String(payload.notificationType || '').trim() || null;
 
     if (!profileId) {
       return sendJson(400, { ok: false, error: 'profileId is required' });
     }
 
     const result = await sendPushToProfile({ profileId, title, body, url });
+    const emoji = getEmojiByNotificationType(notificationType);
     await writeInAppNotification({
       profileId,
-      text: `🔔 ${title} — ${body}`,
+      text: `${emoji} ${body}`,
       data: {
         type: 'push-test',
+        notificationType,
         url
       }
     });
