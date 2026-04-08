@@ -10,6 +10,11 @@ const {
 
 const addDaysUtc = (dateObj, days) => new Date(dateObj.getTime() + days * 24 * 60 * 60 * 1000);
 
+const parseDateKey = (dateKey) => {
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+};
+
 const getDateKeyInTimeZone = (dateObj, timeZone) =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -31,14 +36,24 @@ const formatEventPreview = (event) => {
   return label;
 };
 
-const buildReminderMessage = (events) => {
+const getDayContext = ({ reminderDateKey, targetDateKey }) => {
+  const reminderDate = parseDateKey(reminderDateKey);
+  const targetDate = parseDateKey(targetDateKey);
+  const dayDiff = Math.round((targetDate.getTime() - reminderDate.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (dayDiff === 0) return { adverb: 'oggi', label: 'Oggi' };
+  if (dayDiff === 1) return { adverb: 'domani', label: 'Domani' };
+  return { adverb: `il ${targetDateKey}`, label: targetDateKey };
+};
+
+const buildReminderMessage = ({ events, dayContext }) => {
   if (events.length === 1) {
     const event = events[0];
     const preview = formatEventPreview(event);
     return {
       title: 'Planner di fiducia',
-      body: `Ehi, domani hai in agenda: ${preview}.`,
-      inAppText: `📅 Domani: ${preview}`
+      body: `Ehi, ${dayContext.adverb} hai in agenda: ${preview}.`,
+      inAppText: `📅 ${dayContext.label}: ${preview}`
     };
   }
 
@@ -46,8 +61,8 @@ const buildReminderMessage = (events) => {
   const remaining = events.length > 3 ? ` (+${events.length - 3} altri)` : '';
   return {
     title: 'Planner di fiducia',
-    body: `Ehi, domani hai ${events.length} eventi in agenda: ${preview}${remaining}.`,
-    inAppText: `📅 Domani hai ${events.length} eventi: ${preview}${remaining}`
+    body: `Ehi, ${dayContext.adverb} hai ${events.length} eventi in agenda: ${preview}${remaining}.`,
+    inAppText: `📅 ${dayContext.label}: ${events.length} eventi (${preview}${remaining})`
   };
 };
 
@@ -106,6 +121,7 @@ exports.handler = async (event) => {
     const tomorrowDate = addDaysUtc(new Date(), 1);
     const targetDateKey = targetDate || getDateKeyInTimeZone(tomorrowDate, timeZone);
     const reminderDateKey = getDateKeyInTimeZone(new Date(), timeZone);
+    const dayContext = getDayContext({ reminderDateKey, targetDateKey });
     const now = Date.now();
 
     const firestore = getFirestoreClient();
@@ -168,7 +184,7 @@ exports.handler = async (event) => {
     }
 
     const eventsToNotify = fresh.map(({ event }) => event);
-    const reminder = buildReminderMessage(eventsToNotify);
+    const reminder = buildReminderMessage({ events: eventsToNotify, dayContext });
     const url = '/';
     const pushResult = await sendPushToProfile({
       profileId,

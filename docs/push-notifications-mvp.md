@@ -12,6 +12,8 @@ File principali:
 - `netlify/functions/push-send-reminder.cjs`
 - `netlify/functions/push-send-cleaning-due.cjs`
 - `netlify/functions/push-send-events-due.cjs`
+- `netlify/functions/push-schedule-events-due.cjs` (invio automatico schedulato)
+- `netlify/functions/push-schedule-cleaning-due.cjs` (invio automatico mansioni)
 - `netlify/functions/_push-common.cjs`
 
 ## 2) Chiavi VAPID
@@ -41,6 +43,14 @@ Server Netlify:
 - `WEB_PUSH_SUBJECT=mailto:you@example.com`
 - `FIREBASE_SERVICE_ACCOUNT_JSON=<json service account>`
 - `PUSH_TEST_API_KEY=<api key endpoint>`
+- `PUSH_EVENTS_DUE_PROFILE_IDS=giemmale` (lista profili separati da virgola)
+- `PUSH_EVENTS_DUE_TIME_ZONE=Europe/Rome`
+- `PUSH_EVENTS_DUE_HOUR_TOMORROW_LOCAL=20` (eventi domani)
+- `PUSH_EVENTS_DUE_HOUR_TODAY_LOCAL=10` (eventi oggi)
+- `PUSH_CLEANING_DUE_PROFILE_IDS=giemmale` (opzionale, fallback su `PUSH_EVENTS_DUE_PROFILE_IDS`)
+- `PUSH_CLEANING_DUE_TIME_ZONE=Europe/Rome`
+- `PUSH_CLEANING_DUE_HOUR_TOMORROW_LOCAL=20` (mansioni domani)
+- `PUSH_CLEANING_DUE_HOUR_TODAY_LOCAL=10` (mansioni oggi)
 
 ## 4) Struttura Firestore
 Collezione:
@@ -144,11 +154,22 @@ curl -X POST "https://<tuo-dominio>/api/push/send-events-due" \
 - Se l'endpoint viene chiamato più volte nella stessa giornata, gli eventi già notificati vengono saltati.
 - La risposta include `skippedEvents` con quelli bloccati dall'anti-spam.
 
-## 7) Note iPhone
+## 7) Invio automatico (senza POST manuale)
+- Sono attive 2 Scheduled Function Netlify (`@hourly`):
+  - `push-schedule-events-due`
+  - `push-schedule-cleaning-due`
+- Ogni function controlla l'ora locale e apre due finestre:
+  - reminder del giorno dopo (default: `20:00`)
+  - reminder del giorno stesso (default: `10:00`)
+- Il gating orario locale evita shift con ora legale/solare.
+- La POST `/api/push/send-events-due` resta utile solo per test manuali/debug.
+- La POST `/api/push/send-cleaning-due` resta utile solo per test manuali/debug.
+
+## 8) Note iPhone
 - Web Push iOS funziona solo da PWA installata (`Aggiungi a Home` in Safari).
 - La PWA deve avere notifiche abilitate in iOS Settings.
 - Se permesso `denied`, va riabilitato manualmente.
 
-## 8) In-App Notification Center
+## 9) In-App Notification Center
 - Ogni invio push via endpoint server (`send-test`, `send-reminder`, `send-cleaning-due`, `send-events-due`) salva anche una notifica in Firestore nella collezione `notifications`.
 - Queste notifiche sono quindi visibili sia su lock screen/device sia nel centro notifiche interno all'app.

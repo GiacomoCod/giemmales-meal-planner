@@ -11,6 +11,12 @@
   node_bundler = "zisi"
   external_node_modules = ["firebase-admin", "web-push"]
 
+[functions."push-schedule-events-due"]
+  schedule = "@hourly"
+
+[functions."push-schedule-cleaning-due"]
+  schedule = "@hourly"
+
 [[redirects]]
   from = "/api/push/send-test"
   to = "/.netlify/functions/push-send-test"

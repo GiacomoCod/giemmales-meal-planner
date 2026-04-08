@@ -69,6 +69,16 @@ const buildTaskSnippet = (task) => {
   return `${lcFirst(task.taskName)} ${context}`;
 };
 
+const getDayContext = ({ reminderDateKey, targetDateKey }) => {
+  const reminderDate = parseDateKey(reminderDateKey);
+  const targetDate = parseDateKey(targetDateKey);
+  const dayDiff = Math.round((targetDate.getTime() - reminderDate.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (dayDiff === 0) return { adverb: 'oggi', label: 'Oggi' };
+  if (dayDiff === 1) return { adverb: 'domani', label: 'Domani' };
+  return { adverb: `il ${targetDateKey}`, label: targetDateKey };
+};
+
 const getDailyLockId = (profileId, reminderDateKey, task) =>
   encodeURIComponent(`cleaning-due:${profileId}:${reminderDateKey}:${task.roomId}:${task.taskName}`);
 
@@ -103,13 +113,13 @@ const persistDailyLocks = async ({ fresh, targetDateKey, reminderDateKey, now })
   );
 };
 
-const buildReminderMessage = (dueTasks) => {
+const buildReminderMessage = ({ dueTasks, dayContext }) => {
   if (dueTasks.length === 1) {
     const task = dueTasks[0];
     return {
       title: 'Planner di fiducia',
-      body: `Ehi, qui il tuo planner di fiducia: domani c'è da ${buildTaskSnippet(task)}.`,
-      inAppText: `✨ Domani: ${buildTaskPreview(task)}`
+      body: `Ehi, qui il tuo planner di fiducia: ${dayContext.adverb} c'è da ${buildTaskSnippet(task)}.`,
+      inAppText: `✨ ${dayContext.label}: ${buildTaskPreview(task)}`
     };
   }
 
@@ -121,8 +131,8 @@ const buildReminderMessage = (dueTasks) => {
 
   return {
     title: 'Planner di fiducia',
-    body: `Ehi, domani hai ${dueTasks.length} mansioni in scadenza: ${preview}${remaining}.`,
-    inAppText: `✨ Domani hai ${dueTasks.length} mansioni: ${preview}${remaining}`
+    body: `Ehi, ${dayContext.adverb} hai ${dueTasks.length} mansioni in scadenza: ${preview}${remaining}.`,
+    inAppText: `✨ ${dayContext.label}: ${dueTasks.length} mansioni (${preview}${remaining})`
   };
 };
 
@@ -149,6 +159,7 @@ exports.handler = async (event) => {
     const tomorrowDate = addDaysUtc(new Date(), 1);
     const targetDateKey = targetDate || getDateKeyInTimeZone(tomorrowDate, timeZone);
     const reminderDateKey = getDateKeyInTimeZone(new Date(), timeZone);
+    const dayContext = getDayContext({ reminderDateKey, targetDateKey });
     const now = Date.now();
 
     const firestore = getFirestoreClient();
@@ -226,7 +237,7 @@ exports.handler = async (event) => {
     }
 
     const tasksToNotify = fresh.map(({ task }) => task);
-    const reminder = buildReminderMessage(tasksToNotify);
+    const reminder = buildReminderMessage({ dueTasks: tasksToNotify, dayContext });
     const url = '/?tab=cleaning';
     const pushResult = await sendPushToProfile({
       profileId,
