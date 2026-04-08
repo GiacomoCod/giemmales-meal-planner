@@ -22,3 +22,9 @@
   to = "/.netlify/functions/push-send-reminder"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/api/push/list-subscriptions"
+  to = "/.netlify/functions/push-list-subscriptions"
+  status = 200
+  force = true

@@ -72,6 +72,11 @@ const listSubscriptions = async (profileId) => {
 
       return {
         docRef: docSnap.ref,
+        meta: {
+          userAgent: data.userAgent || null,
+          platform: data.platform || null,
+          updatedAt: data.updatedAt || null
+        },
         subscription: {
           endpoint: data.endpoint,
           keys: {
@@ -109,7 +114,7 @@ const sendPushToProfile = async ({ profileId, title, body, url, extraData = {} }
   let sent = 0;
 
   await Promise.all(
-    subscriptions.map(async ({ docRef, subscription }) => {
+    subscriptions.map(async ({ docRef, subscription, meta }) => {
       try {
         await webpush.sendNotification(subscription, payload);
         sent += 1;
@@ -118,6 +123,7 @@ const sendPushToProfile = async ({ profileId, title, body, url, extraData = {} }
         const message = error?.message || 'Unknown web-push error';
         failures.push({
           endpoint: subscription.endpoint,
+          platform: meta?.platform || null,
           statusCode,
           message
         });
@@ -139,6 +145,16 @@ const sendPushToProfile = async ({ profileId, title, body, url, extraData = {} }
     invalidSubscriptionsRemoved: deleteInvalidPromises.length,
     failures
   };
+};
+
+const getSubscriptionsDebug = async (profileId) => {
+  const subscriptions = await listSubscriptions(profileId);
+  return subscriptions.map(({ subscription, meta }) => ({
+    endpoint: subscription.endpoint,
+    platform: meta?.platform || null,
+    userAgent: meta?.userAgent || null,
+    updatedAt: meta?.updatedAt || null
+  }));
 };
 
 const isUnauthorized = (event) => {
@@ -168,5 +184,6 @@ module.exports = {
   isUnauthorized,
   parseBody,
   sendJson,
-  sendPushToProfile
+  sendPushToProfile,
+  getSubscriptionsDebug
 };
