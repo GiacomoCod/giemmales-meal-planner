@@ -36,6 +36,20 @@ const formatEventPreview = (event) => {
   return label;
 };
 
+const extractStartTime = (startTime) => {
+  const text = String(startTime || '').trim();
+  const match = text.match(/^(\d{2}:\d{2})/);
+  return match ? match[1] : null;
+};
+
+const getCurrentTimeInTimeZone = (timeZone) =>
+  new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date());
+
 const getDayContext = ({ reminderDateKey, targetDateKey }) => {
   const reminderDate = parseDateKey(reminderDateKey);
   const targetDate = parseDateKey(targetDateKey);
@@ -113,6 +127,7 @@ exports.handler = async (event) => {
     const timeZone = String(payload.timeZone || 'Europe/Rome');
     const targetDate = String(payload.targetDate || '').trim();
     const ignoreDailyLimit = Boolean(payload.ignoreDailyLimit);
+    const skipPastTimesForToday = Boolean(payload.skipPastTimesForToday);
 
     if (!profileId) {
       return sendJson(400, { ok: false, error: 'profileId is required' });
@@ -131,7 +146,7 @@ exports.handler = async (event) => {
       .limit(500)
       .get();
 
-    const eventsDue = eventsSnapshot.docs.map((doc) => {
+    const eventsDueRaw = eventsSnapshot.docs.map((doc) => {
       const data = doc.data() || {};
       return {
         id: data.id || doc.id,
@@ -142,6 +157,28 @@ exports.handler = async (event) => {
       };
     });
 
+    const currentTime = getCurrentTimeInTimeZone(timeZone);
+    const isTodayTarget = targetDateKey === reminderDateKey;
+    const { eventsDue, skippedPastEvents } =
+      skipPastTimesForToday && isTodayTarget
+        ? eventsDueRaw.reduce(
+            (acc, evt) => {
+              const startTime = extractStartTime(evt.startTime);
+              if (!startTime) {
+                acc.eventsDue.push(evt);
+                return acc;
+              }
+              if (startTime > currentTime) {
+                acc.eventsDue.push(evt);
+              } else {
+                acc.skippedPastEvents.push(evt);
+              }
+              return acc;
+            },
+            { eventsDue: [], skippedPastEvents: [] }
+          )
+        : { eventsDue: eventsDueRaw, skippedPastEvents: [] };
+
     if (eventsDue.length === 0) {
       return sendJson(200, {
         ok: true,
@@ -149,7 +186,8 @@ exports.handler = async (event) => {
         targetDate: targetDateKey,
         sent: 0,
         message: 'Nessun evento previsto per la data target.',
-        dueEvents: []
+        dueEvents: [],
+        skippedPastEvents
       });
     }
 
@@ -227,9 +265,11 @@ exports.handler = async (event) => {
       failures: pushResult.failures,
       dueEvents: eventsToNotify,
       skippedEvents: skipped.map(({ event }) => event),
+      skippedPastEvents,
       antiSpam: {
         reminderDate: reminderDateKey,
-        ignoredDailyLimit: ignoreDailyLimit
+        ignoredDailyLimit: ignoreDailyLimit,
+        skipPastTimesForToday
       }
     });
   } catch (error) {

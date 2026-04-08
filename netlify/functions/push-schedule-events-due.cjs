@@ -40,11 +40,11 @@ const getDateKeyInTimeZone = (dateObj, timeZone) =>
     day: '2-digit'
   }).format(dateObj);
 
-const invokeEventsDue = async ({ profileId, timeZone, targetDate }) => {
+const invokeEventsDue = async ({ profileId, timeZone, targetDate, skipPastTimesForToday }) => {
   const fakeEvent = {
     httpMethod: 'POST',
     headers: process.env.PUSH_TEST_API_KEY ? { 'x-api-key': process.env.PUSH_TEST_API_KEY } : {},
-    body: JSON.stringify({ profileId, timeZone, targetDate })
+    body: JSON.stringify({ profileId, timeZone, targetDate, skipPastTimesForToday })
   };
 
   const response = await sendEventsDueHandler(fakeEvent);
@@ -78,10 +78,10 @@ exports.handler = async () => {
 
     const windows = [];
     if (localHour === todayHourLocal) {
-      windows.push({ type: 'events-today', targetDate: runDate });
+      windows.push({ type: 'events-today', targetDate: runDate, skipPastTimesForToday: true });
     }
     if (localHour === tomorrowHourLocal) {
-      windows.push({ type: 'events-tomorrow', targetDate: tomorrowDate });
+      windows.push({ type: 'events-tomorrow', targetDate: tomorrowDate, skipPastTimesForToday: false });
     }
 
     // Keep schedule @hourly and gate by local hour so DST changes do not shift delivery time.
@@ -104,7 +104,12 @@ exports.handler = async () => {
     const results = [];
     for (const window of windows) {
       for (const profileId of profileIds) {
-        const runResult = await invokeEventsDue({ profileId, timeZone, targetDate: window.targetDate });
+        const runResult = await invokeEventsDue({
+          profileId,
+          timeZone,
+          targetDate: window.targetDate,
+          skipPastTimesForToday: window.skipPastTimesForToday
+        });
         const body = runResult.body || {};
         results.push({
           window: window.type,
@@ -116,6 +121,7 @@ exports.handler = async () => {
           targetDate: body.targetDate || window.targetDate,
           dueEvents: Array.isArray(body.dueEvents) ? body.dueEvents.length : 0,
           skippedEvents: Array.isArray(body.skippedEvents) ? body.skippedEvents.length : 0,
+          skippedPastEvents: Array.isArray(body.skippedPastEvents) ? body.skippedPastEvents.length : 0,
           message: body.message || null,
           error: body.error || null
         });

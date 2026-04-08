@@ -161,6 +161,7 @@ curl -X POST "https://<tuo-dominio>/api/push/send-events-due" \
 - Ogni function controlla l'ora locale e apre due finestre:
   - reminder del giorno dopo (default: `20:00`)
   - reminder del giorno stesso (default: `10:00`)
+- Nel reminder eventi delle 10:00, gli eventi con orario già passato vengono esclusi automaticamente.
 - Il gating orario locale evita shift con ora legale/solare.
 - La POST `/api/push/send-events-due` resta utile solo per test manuali/debug.
 - La POST `/api/push/send-cleaning-due` resta utile solo per test manuali/debug.
