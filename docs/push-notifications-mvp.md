@@ -80,6 +80,18 @@ Documento:
 - `shopping`
 - `weekly-plan`
 
+`POST /api/push/send-cleaning-due`
+- invia promemoria mansioni in scadenza (default: domani, timezone Europe/Rome)
+- body minimo:
+```json
+{
+  "profileId": "giemmale"
+}
+```
+- opzionali:
+  - `timeZone` (es. `Europe/Rome`)
+  - `targetDate` (formato `yyyy-MM-dd`, override manuale)
+
 ## 6) Test rapido
 Attiva notifiche dalla PWA, poi:
 
@@ -90,7 +102,19 @@ curl -X POST "https://<tuo-dominio>/api/push/send-test" \
   -d '{"profileId":"giemmale","title":"Test Push","body":"Prima push end-to-end","url":"/"}'
 ```
 
+Esempio mansioni in scadenza:
+```bash
+curl -X POST "https://<tuo-dominio>/api/push/send-cleaning-due" \
+  -H "content-type: application/json" \
+  -H "x-api-key: <PUSH_TEST_API_KEY>" \
+  -d '{"profileId":"giemmale","timeZone":"Europe/Rome"}'
+```
+
 ## 7) Note iPhone
 - Web Push iOS funziona solo da PWA installata (`Aggiungi a Home` in Safari).
 - La PWA deve avere notifiche abilitate in iOS Settings.
 - Se permesso `denied`, va riabilitato manualmente.
+
+## 8) In-App Notification Center
+- Ogni invio push via endpoint server (`send-test`, `send-reminder`, `send-cleaning-due`) salva anche una notifica in Firestore nella collezione `notifications`.
+- Queste notifiche sono quindi visibili sia su lock screen/device sia nel centro notifiche interno all'app.

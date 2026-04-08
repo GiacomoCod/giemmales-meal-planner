@@ -1,4 +1,4 @@
-const { isUnauthorized, parseBody, sendJson, sendPushToProfile } = require('./_push-common.cjs');
+const { isUnauthorized, parseBody, sendJson, sendPushToProfile, writeInAppNotification } = require('./_push-common.cjs');
 
 const DEFAULT_TITLE = 'VibesPlanning';
 const DEFAULT_BODY = 'Hai un nuovo promemoria.';
@@ -25,6 +25,14 @@ exports.handler = async (event) => {
     }
 
     const result = await sendPushToProfile({ profileId, title, body, url });
+    await writeInAppNotification({
+      profileId,
+      text: `🔔 ${title} — ${body}`,
+      data: {
+        type: 'push-test',
+        url
+      }
+    });
 
     return sendJson(200, {
       ok: true,

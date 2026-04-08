@@ -4,6 +4,10 @@ const webpush = require('web-push');
 
 const getPushCollectionPath = (profileId) =>
   profileId === 'giemmale' ? 'pushSubscriptions' : `profiles/${profileId}/pushSubscriptions`;
+const getNotificationsCollectionPath = (profileId) =>
+  profileId === 'giemmale' ? 'notifications' : `profiles/${profileId}/notifications`;
+const getCollectionPath = (profileId, collectionName) =>
+  profileId === 'giemmale' ? collectionName : `profiles/${profileId}/${collectionName}`;
 
 const parseServiceAccount = (rawValue) => {
   if (!rawValue) return null;
@@ -160,6 +164,19 @@ const getSubscriptionsDebug = async (profileId) => {
   }));
 };
 
+const writeInAppNotification = async ({ profileId, text, data = {} }) => {
+  const firestore = getFirestoreClient();
+  const collectionPath = getNotificationsCollectionPath(profileId);
+  const docId = `push-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  await firestore.collection(collectionPath).doc(docId).set({
+    text,
+    timestamp: Date.now(),
+    read: false,
+    source: 'push',
+    ...data
+  });
+};
+
 const isUnauthorized = (event) => {
   const expectedApiKey = process.env.PUSH_TEST_API_KEY;
   if (!expectedApiKey) return false;
@@ -188,5 +205,8 @@ module.exports = {
   parseBody,
   sendJson,
   sendPushToProfile,
-  getSubscriptionsDebug
+  getSubscriptionsDebug,
+  getFirestoreClient,
+  getCollectionPath,
+  writeInAppNotification
 };

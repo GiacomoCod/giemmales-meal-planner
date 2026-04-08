@@ -28,3 +28,9 @@
   to = "/.netlify/functions/push-list-subscriptions"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/api/push/send-cleaning-due"
+  to = "/.netlify/functions/push-send-cleaning-due"
+  status = 200
+  force = true

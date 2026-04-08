@@ -1,4 +1,4 @@
-const { isUnauthorized, parseBody, sendJson, sendPushToProfile } = require('./_push-common.cjs');
+const { isUnauthorized, parseBody, sendJson, sendPushToProfile, writeInAppNotification } = require('./_push-common.cjs');
 
 const REMINDER_TEMPLATES = {
   'meal-plan': {
@@ -55,6 +55,15 @@ exports.handler = async (event) => {
       body,
       url,
       extraData: { reminderType }
+    });
+    await writeInAppNotification({
+      profileId,
+      text: `🔔 ${title} — ${body}`,
+      data: {
+        type: 'push-reminder',
+        reminderType,
+        url
+      }
     });
 
     return sendJson(200, {
