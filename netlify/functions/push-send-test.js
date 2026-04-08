@@ -103,13 +103,24 @@ export const handler = async (event) => {
 
     const invalidTokenCodes = new Set([
       'messaging/invalid-registration-token',
-      'messaging/registration-token-not-registered'
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-argument'
     ]);
 
     const invalidTokens = [];
+    const failureDetails = [];
     response.responses.forEach((item, index) => {
-      if (!item.success && item.error?.code && invalidTokenCodes.has(item.error.code)) {
-        invalidTokens.push(tokens[index]);
+      if (!item.success) {
+        const code = item.error?.code || 'unknown';
+        const message = item.error?.message || 'Unknown FCM error';
+        const token = tokens[index];
+
+        failureDetails.push({ token, code, message });
+        console.error('[push-send-test] FCM send failure', { token, code, message });
+
+        if (invalidTokenCodes.has(code)) {
+          invalidTokens.push(token);
+        }
       }
     });
 
@@ -125,7 +136,8 @@ export const handler = async (event) => {
       profileId,
       sent: response.successCount,
       failed: response.failureCount,
-      invalidTokensRemoved: invalidTokens.length
+      invalidTokensRemoved: invalidTokens.length,
+      failures: failureDetails
     });
   } catch (error) {
     return sendJson(500, {
