@@ -1,6 +1,6 @@
-import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import { getMessaging } from 'firebase-admin/messaging';
+const { applicationDefault, cert, getApps, initializeApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const { getMessaging } = require('firebase-admin/messaging');
 
 const DEFAULT_TITLE = 'VibesPlanning';
 const DEFAULT_BODY = 'Hai un nuovo promemoria.';
@@ -66,7 +66,7 @@ const sendJson = (statusCode, body) => ({
   body: JSON.stringify(body)
 });
 
-export const handler = async (event) => {
+exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return sendJson(405, { ok: false, error: 'Method not allowed. Use POST.' });
   }
