@@ -47,15 +47,6 @@ const urlBase64ToUint8Array = (base64String: string) => {
   return outputArray;
 };
 
-const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return window.btoa(binary);
-};
-
 const getCurrentSubscription = async () => {
   const registration = await getServiceWorkerRegistration();
   return registration.pushManager.getSubscription();
@@ -63,19 +54,18 @@ const getCurrentSubscription = async () => {
 
 const saveSubscriptionToFirestore = async (profileId: string, userId: string, subscription: PushSubscription) => {
   const path = getPushCollectionPath(profileId);
-  const rawP256dh = subscription.getKey('p256dh');
-  const rawAuth = subscription.getKey('auth');
-  if (!rawP256dh || !rawAuth) {
+  const json = subscription.toJSON();
+  const endpoint = json.endpoint || subscription.endpoint;
+  const p256dh = json.keys?.p256dh;
+  const auth = json.keys?.auth;
+  if (!endpoint || !p256dh || !auth) {
     throw new Error('Impossibile leggere le chiavi della subscription push.');
   }
 
-  const p256dh = arrayBufferToBase64(rawP256dh);
-  const auth = arrayBufferToBase64(rawAuth);
-
   await setDoc(
-    doc(db, path, getPushDocId(subscription.endpoint)),
+    doc(db, path, getPushDocId(endpoint)),
     {
-      endpoint: subscription.endpoint,
+      endpoint,
       keys: { p256dh, auth },
       userId,
       profileId,
