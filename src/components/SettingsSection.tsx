@@ -361,8 +361,13 @@ export function SettingsSection({
       }
     } catch (err) {
       console.error(err);
+      const reason = err instanceof Error ? err.message : 'Errore sconosciuto';
       setPushPermission(isPushSupportedInBrowser() ? Notification.permission : 'unsupported');
-      setErrorMsg(pushEnabled ? 'Impossibile disattivare le notifiche push.' : 'Impossibile attivare le notifiche push.');
+      setErrorMsg(
+        pushEnabled
+          ? `Impossibile disattivare le notifiche push. (${reason})`
+          : `Impossibile attivare le notifiche push. (${reason})`
+      );
     } finally {
       setIsPushUpdating(false);
     }

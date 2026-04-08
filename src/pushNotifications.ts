@@ -10,6 +10,7 @@ type PushStatus = {
 };
 
 const MESSAGING_SW_PATH = '/firebase-messaging-sw.js';
+const PUSH_SW_SCOPE = '/push-notifications/';
 const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
 const getPushCollectionPath = (profileId: string) =>
@@ -22,24 +23,35 @@ export const isPushSupportedInBrowser = () => {
   return 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
 };
 
-const getServiceWorkerRegistration = async () => {
-  const rootRegistration = await navigator.serviceWorker.getRegistration('/');
-  if (rootRegistration?.active?.scriptURL.includes(MESSAGING_SW_PATH)) {
-    return rootRegistration;
-  }
+const waitForActiveWorker = async (registration: ServiceWorkerRegistration) => {
+  if (registration.active) return registration;
 
-  const registration = await navigator.serviceWorker.register(MESSAGING_SW_PATH, { scope: '/' });
-  await navigator.serviceWorker.ready;
-
-  const legacyRegistration = await navigator.serviceWorker.getRegistration('/push-notifications/');
-  if (legacyRegistration) {
-    try {
-      await legacyRegistration.unregister();
-    } catch {
-      // no-op
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error('Service worker non attivo in tempo utile.')), 10000);
+    const worker = registration.installing || registration.waiting;
+    if (!worker) {
+      window.clearTimeout(timeout);
+      resolve();
+      return;
     }
-  }
 
+    worker.addEventListener('statechange', () => {
+      if (worker.state === 'activated') {
+        window.clearTimeout(timeout);
+        resolve();
+      }
+    });
+  });
+
+  return registration;
+};
+
+const getServiceWorkerRegistration = async () => {
+  const existing = await navigator.serviceWorker.getRegistration(PUSH_SW_SCOPE);
+  if (existing?.active) return existing;
+
+  const registration = await navigator.serviceWorker.register(MESSAGING_SW_PATH, { scope: PUSH_SW_SCOPE });
+  await waitForActiveWorker(registration);
   return registration;
 };
 
