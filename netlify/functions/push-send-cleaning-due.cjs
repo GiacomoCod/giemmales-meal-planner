@@ -16,6 +16,14 @@ const ROOM_LABELS = {
   ingresso: 'Ingresso'
 };
 
+const ROOM_CONTEXT = {
+  cucina: 'in cucina',
+  camera: 'in camera',
+  bagno: 'in bagno',
+  salotto: 'in salotto',
+  ingresso: "all'ingresso"
+};
+
 const unitToDays = (value, unit) => {
   if (!value || value < 1) return 7;
   if (unit === 'giorni') return value;
@@ -48,26 +56,73 @@ const findLatestLog = (logs) =>
     return (b.timestamp || 0) - (a.timestamp || 0);
   })[0] || null;
 
+const lcFirst = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return text;
+  return text.charAt(0).toLowerCase() + text.slice(1);
+};
+
+const buildTaskPreview = (task) => `${task.taskName} (${task.roomLabel})`;
+
+const buildTaskSnippet = (task) => {
+  const context = ROOM_CONTEXT[task.roomId] || `in ${task.roomLabel}`;
+  return `${lcFirst(task.taskName)} ${context}`;
+};
+
+const getDailyLockId = (profileId, reminderDateKey, task) =>
+  encodeURIComponent(`cleaning-due:${profileId}:${reminderDateKey}:${task.roomId}:${task.taskName}`);
+
+const splitByDailyLimit = async ({ firestore, profileId, reminderDateKey, dueTasks }) => {
+  const lockPath = getCollectionPath(profileId, 'notificationLocks');
+  const checks = dueTasks.map(async (task) => {
+    const lockId = getDailyLockId(profileId, reminderDateKey, task);
+    const lockRef = firestore.collection(lockPath).doc(lockId);
+    const lockDoc = await lockRef.get();
+    return { task, lockId, lockRef, alreadyNotified: lockDoc.exists };
+  });
+
+  const results = await Promise.all(checks);
+  const fresh = results.filter((item) => !item.alreadyNotified);
+  const skipped = results.filter((item) => item.alreadyNotified);
+  return { fresh, skipped };
+};
+
+const persistDailyLocks = async ({ fresh, targetDateKey, reminderDateKey, now }) => {
+  if (!fresh.length) return;
+  await Promise.all(
+    fresh.map(({ task, lockRef }) =>
+      lockRef.set({
+        type: 'cleaning-due',
+        roomId: task.roomId,
+        taskName: task.taskName,
+        targetDate: targetDateKey,
+        reminderDate: reminderDateKey,
+        createdAt: now
+      })
+    )
+  );
+};
+
 const buildReminderMessage = (dueTasks) => {
   if (dueTasks.length === 1) {
     const task = dueTasks[0];
     return {
       title: 'Planner di fiducia',
-      body: `Ehi, domani c'è da: ${task.taskName} (${task.roomLabel}).`,
-      inAppText: `✨ Domani: ${task.taskName} (${task.roomLabel})`
+      body: `Ehi, qui il tuo planner di fiducia: domani c'è da ${buildTaskSnippet(task)}.`,
+      inAppText: `✨ Domani: ${buildTaskPreview(task)}`
     };
   }
 
   const preview = dueTasks
-    .slice(0, 2)
-    .map((t) => `${t.taskName} (${t.roomLabel})`)
-    .join(', ');
-  const remaining = dueTasks.length > 2 ? ` +${dueTasks.length - 2} altre` : '';
+    .slice(0, 3)
+    .map((t) => buildTaskPreview(t))
+    .join(' • ');
+  const remaining = dueTasks.length > 3 ? ` (+${dueTasks.length - 3} altre)` : '';
 
   return {
     title: 'Planner di fiducia',
-    body: `Domani ci sono ${dueTasks.length} mansioni: ${preview}${remaining}.`,
-    inAppText: `✨ Domani ci sono ${dueTasks.length} mansioni in scadenza`
+    body: `Ehi, domani hai ${dueTasks.length} mansioni in scadenza: ${preview}${remaining}.`,
+    inAppText: `✨ Domani hai ${dueTasks.length} mansioni: ${preview}${remaining}`
   };
 };
 
@@ -85,6 +140,7 @@ exports.handler = async (event) => {
     const profileId = String(payload.profileId || '').trim();
     const timeZone = String(payload.timeZone || 'Europe/Rome');
     const targetDate = String(payload.targetDate || '').trim();
+    const ignoreDailyLimit = Boolean(payload.ignoreDailyLimit);
 
     if (!profileId) {
       return sendJson(400, { ok: false, error: 'profileId is required' });
@@ -92,6 +148,8 @@ exports.handler = async (event) => {
 
     const tomorrowDate = addDaysUtc(new Date(), 1);
     const targetDateKey = targetDate || getDateKeyInTimeZone(tomorrowDate, timeZone);
+    const reminderDateKey = getDateKeyInTimeZone(new Date(), timeZone);
+    const now = Date.now();
 
     const firestore = getFirestoreClient();
     const [tasksSnapshot, logsSnapshot, settingsSnapshot] = await Promise.all([
@@ -138,7 +196,37 @@ exports.handler = async (event) => {
       });
     }
 
-    const reminder = buildReminderMessage(dueTasks);
+    const { fresh, skipped } = ignoreDailyLimit
+      ? {
+          fresh: dueTasks.map((task) => ({
+            task,
+            lockId: getDailyLockId(profileId, reminderDateKey, task),
+            lockRef: firestore.collection(getCollectionPath(profileId, 'notificationLocks')).doc(getDailyLockId(profileId, reminderDateKey, task)),
+            alreadyNotified: false
+          })),
+          skipped: []
+        }
+      : await splitByDailyLimit({
+          firestore,
+          profileId,
+          reminderDateKey,
+          dueTasks
+        });
+
+    if (fresh.length === 0) {
+      return sendJson(200, {
+        ok: true,
+        profileId,
+        targetDate: targetDateKey,
+        sent: 0,
+        message: 'Mansioni già notificate oggi (anti-spam attivo).',
+        dueTasks: [],
+        skippedTasks: skipped.map(({ task }) => task)
+      });
+    }
+
+    const tasksToNotify = fresh.map(({ task }) => task);
+    const reminder = buildReminderMessage(tasksToNotify);
     const url = '/?tab=cleaning';
     const pushResult = await sendPushToProfile({
       profileId,
@@ -148,7 +236,7 @@ exports.handler = async (event) => {
       extraData: {
         type: 'cleaning-due',
         targetDate: targetDateKey,
-        count: String(dueTasks.length)
+        count: String(tasksToNotify.length)
       }
     });
 
@@ -158,10 +246,17 @@ exports.handler = async (event) => {
       data: {
         type: 'cleaning-due',
         targetDate: targetDateKey,
-        count: dueTasks.length,
-        tasks: dueTasks.map((task) => task.taskName),
+        count: tasksToNotify.length,
+        tasks: tasksToNotify.map((task) => task.taskName),
         url
       }
+    });
+
+    await persistDailyLocks({
+      fresh,
+      targetDateKey,
+      reminderDateKey,
+      now
     });
 
     return sendJson(200, {
@@ -172,7 +267,12 @@ exports.handler = async (event) => {
       failed: pushResult.failed,
       invalidSubscriptionsRemoved: pushResult.invalidSubscriptionsRemoved,
       failures: pushResult.failures,
-      dueTasks
+      dueTasks: tasksToNotify,
+      skippedTasks: skipped.map(({ task }) => task),
+      antiSpam: {
+        reminderDate: reminderDateKey,
+        ignoredDailyLimit: ignoreDailyLimit
+      }
     });
   } catch (error) {
     return sendJson(500, {

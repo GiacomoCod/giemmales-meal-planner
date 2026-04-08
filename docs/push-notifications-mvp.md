@@ -91,6 +91,7 @@ Documento:
 - opzionali:
   - `timeZone` (es. `Europe/Rome`)
   - `targetDate` (formato `yyyy-MM-dd`, override manuale)
+  - `ignoreDailyLimit` (boolean, default `false`, bypass anti-spam)
 
 ## 6) Test rapido
 Attiva notifiche dalla PWA, poi:
@@ -109,6 +110,11 @@ curl -X POST "https://<tuo-dominio>/api/push/send-cleaning-due" \
   -H "x-api-key: <PUSH_TEST_API_KEY>" \
   -d '{"profileId":"giemmale","timeZone":"Europe/Rome"}'
 ```
+
+### Anti-spam pulizie
+- Regola: massimo 1 reminder al giorno per singola mansione.
+- Se l'endpoint viene chiamato più volte nella stessa giornata, le mansioni già notificate vengono saltate.
+- La risposta include `skippedTasks` con quelle bloccate dall'anti-spam.
 
 ## 7) Note iPhone
 - Web Push iOS funziona solo da PWA installata (`Aggiungi a Home` in Safari).
