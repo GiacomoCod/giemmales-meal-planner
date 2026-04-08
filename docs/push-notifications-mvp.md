@@ -10,6 +10,8 @@ File principali:
 - `public/firebase-messaging-sw.js` (handler push generico)
 - `netlify/functions/push-send-test.cjs`
 - `netlify/functions/push-send-reminder.cjs`
+- `netlify/functions/push-send-cleaning-due.cjs`
+- `netlify/functions/push-send-events-due.cjs`
 - `netlify/functions/_push-common.cjs`
 
 ## 2) Chiavi VAPID
@@ -93,6 +95,19 @@ Documento:
   - `targetDate` (formato `yyyy-MM-dd`, override manuale)
   - `ignoreDailyLimit` (boolean, default `false`, bypass anti-spam)
 
+`POST /api/push/send-events-due`
+- invia promemoria eventi previsti (default: domani, timezone Europe/Rome)
+- body minimo:
+```json
+{
+  "profileId": "giemmale"
+}
+```
+- opzionali:
+  - `timeZone` (es. `Europe/Rome`)
+  - `targetDate` (formato `yyyy-MM-dd`, override manuale)
+  - `ignoreDailyLimit` (boolean, default `false`, bypass anti-spam)
+
 ## 6) Test rapido
 Attiva notifiche dalla PWA, poi:
 
@@ -111,10 +126,23 @@ curl -X POST "https://<tuo-dominio>/api/push/send-cleaning-due" \
   -d '{"profileId":"giemmale","timeZone":"Europe/Rome"}'
 ```
 
+Esempio eventi previsti domani:
+```bash
+curl -X POST "https://<tuo-dominio>/api/push/send-events-due" \
+  -H "content-type: application/json" \
+  -H "x-api-key: <PUSH_TEST_API_KEY>" \
+  -d '{"profileId":"giemmale","timeZone":"Europe/Rome"}'
+```
+
 ### Anti-spam pulizie
 - Regola: massimo 1 reminder al giorno per singola mansione.
 - Se l'endpoint viene chiamato più volte nella stessa giornata, le mansioni già notificate vengono saltate.
 - La risposta include `skippedTasks` con quelle bloccate dall'anti-spam.
+
+### Anti-spam eventi
+- Regola: massimo 1 reminder al giorno per singolo evento.
+- Se l'endpoint viene chiamato più volte nella stessa giornata, gli eventi già notificati vengono saltati.
+- La risposta include `skippedEvents` con quelli bloccati dall'anti-spam.
 
 ## 7) Note iPhone
 - Web Push iOS funziona solo da PWA installata (`Aggiungi a Home` in Safari).
@@ -122,5 +150,5 @@ curl -X POST "https://<tuo-dominio>/api/push/send-cleaning-due" \
 - Se permesso `denied`, va riabilitato manualmente.
 
 ## 8) In-App Notification Center
-- Ogni invio push via endpoint server (`send-test`, `send-reminder`, `send-cleaning-due`) salva anche una notifica in Firestore nella collezione `notifications`.
+- Ogni invio push via endpoint server (`send-test`, `send-reminder`, `send-cleaning-due`, `send-events-due`) salva anche una notifica in Firestore nella collezione `notifications`.
 - Queste notifiche sono quindi visibili sia su lock screen/device sia nel centro notifiche interno all'app.

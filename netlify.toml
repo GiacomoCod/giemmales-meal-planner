@@ -34,3 +34,9 @@
   to = "/.netlify/functions/push-send-cleaning-due"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/api/push/send-events-due"
+  to = "/.netlify/functions/push-send-events-due"
+  status = 200
+  force = true
