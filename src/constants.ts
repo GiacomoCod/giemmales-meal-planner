@@ -65,11 +65,11 @@ export const MEALS = [
 ];
 
 export const ROOMS = [
-  { id: 'cucina', label: 'Cucina', Icon: ChefHat, color: '#FFFAF0' },
-  { id: 'camera', label: 'Camera da letto', Icon: Bed, color: '#F5F5FF' },
-  { id: 'bagno', label: 'Bagno', Icon: Bath, color: '#F0FFFF' },
-  { id: 'salotto', label: 'Salotto', Icon: Sofa, color: '#F0FFF4' },
-  { id: 'ingresso', label: 'Ingresso', Icon: DoorOpen, color: '#FFF5F5' }
+  { id: 'cucina', label: 'Cucina', Icon: ChefHat, color: 'var(--room-cucina)' },
+  { id: 'camera', label: 'Camera da letto', Icon: Bed, color: 'var(--room-camera)' },
+  { id: 'bagno', label: 'Bagno', Icon: Bath, color: 'var(--room-bagno)' },
+  { id: 'salotto', label: 'Salotto', Icon: Sofa, color: 'var(--room-salotto)' },
+  { id: 'ingresso', label: 'Ingresso', Icon: DoorOpen, color: 'var(--room-ingresso)' }
 ];
 
 export const DEFAULT_ROOM_TASKS: Record<string, string[]> = {
@@ -83,11 +83,11 @@ export const DEFAULT_ROOM_TASKS: Record<string, string[]> = {
 export const DUMMY_RECIPES: Recipe[] = [];
 
 export const PASTEL_VARS = [
-  '#FFF5F5', // Monday - Subtle red/pink
-  '#FFF9F0', // Tuesday - Subtle orange
-  '#FFFDF0', // Wednesday - Subtle yellow
-  '#F0FFF4', // Thursday - Subtle green
-  '#F0FFFF', // Friday - Subtle blue/cyan
-  '#F5F5FF', // Saturday - Subtle indigo/blue
-  '#FAF5FF'  // Sunday - Subtle purple
+  'var(--col-lunedi)',
+  'var(--col-martedi)',
+  'var(--col-mercoledi)',
+  'var(--col-giovedi)',
+  'var(--col-venerdi)',
+  'var(--col-sabato)',
+  'var(--col-domenica)'
 ];

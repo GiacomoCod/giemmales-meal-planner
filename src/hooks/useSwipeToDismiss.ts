@@ -7,6 +7,7 @@ interface SwipeToDismissResult {
     onTouchStart: (e: React.TouchEvent) => void;
     onTouchMove: (e: React.TouchEvent) => void;
     onTouchEnd: (e: React.TouchEvent) => void;
+    onTouchCancel: (e: React.TouchEvent) => void;
   };
 }
 
@@ -28,6 +29,16 @@ export function useSwipeToDismiss(
     return () => {
       document.body.style.overflow = originalOverflow;
     };
+  }, [isActive]);
+
+  // Ensure sheet always reopens from a sane position.
+  useEffect(() => {
+    if (!isActive) {
+      setTranslateY(0);
+      setIsDragging(false);
+      startY.current = null;
+      currentY.current = 0;
+    }
   }, [isActive]);
   
   const startY = useRef<number | null>(null);
@@ -62,20 +73,32 @@ export function useSwipeToDismiss(
   const onTouchEnd = useCallback(() => {
     if (!isDragging) return;
     setIsDragging(false);
-    
-    if (currentY.current > threshold) {
-      // Dismiss
-      onDismiss();
-      // Keep it down while closing
-      setTranslateY(window.innerHeight);
-    } else {
-      // Snap back
-      setTranslateY(0);
-    }
-    
+
+    const shouldDismiss = currentY.current > threshold;
+
+    // Always snap state back first to avoid "overlay visible but sheet offscreen" races.
+    setTranslateY(0);
     startY.current = null;
     currentY.current = 0;
+
+    if (shouldDismiss) {
+      onDismiss();
+    }
   }, [isDragging, threshold, onDismiss]);
+
+  const onTouchCancel = useCallback(() => {
+    setIsDragging(false);
+    setTranslateY(0);
+    startY.current = null;
+    currentY.current = 0;
+  }, []);
+
+  // Extra safeguard: if translate remains > 0 while active and not dragging, snap it back.
+  useEffect(() => {
+    if (!isActive || isDragging || translateY <= 0) return;
+    const t = window.setTimeout(() => setTranslateY(0), 80);
+    return () => window.clearTimeout(t);
+  }, [isActive, isDragging, translateY]);
 
   return {
     transform: `translateY(${translateY}px)`,
@@ -83,7 +106,8 @@ export function useSwipeToDismiss(
     handlers: {
       onTouchStart,
       onTouchMove,
-      onTouchEnd
+      onTouchEnd,
+      onTouchCancel
     }
   };
 }

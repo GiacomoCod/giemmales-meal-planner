@@ -33,6 +33,8 @@ export type CleaningLog = {
   taskType: string;
   date: string; // yyyy-MM-dd
   timestamp: number;
+  performedByTagId?: string;
+  performedByLabel?: string;
 };
 
 export type RoomTask = {

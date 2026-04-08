@@ -43,8 +43,8 @@
   font-size: 0.85rem;
   font-weight: 800;
   text-transform: uppercase;
-  color: #6366f1;
-  background: rgba(99, 102, 241, 0.1);
+  color: var(--accent-primary);
+  background: var(--accent-subtle);
   padding: 6px 14px;
   border-radius: 12px;
   margin-bottom: 12px;
@@ -89,7 +89,11 @@
   /* Designer's Mask Trick */
   -webkit-mask-image: radial-gradient(circle, black 40%, transparent 75%);
   mask-image: radial-gradient(circle, black 40%, transparent 75%);
-  filter: brightness(1.05) contrast(1.02);
+  filter: drop-shadow(0 14px 22px rgba(15, 23, 42, 0.1)) drop-shadow(0 28px 40px rgba(15, 23, 42, 0.1)) brightness(1.03) contrast(1.03);
+}
+
+.dark-mode .floating-cart {
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.3)) drop-shadow(0 32px 48px rgba(0, 0, 0, 0.28)) brightness(0.98) contrast(1.08);
 }
 
 @keyframes floatCart {
@@ -103,11 +107,15 @@
   left: 50%;
   transform: translateX(-50%);
   width: 120px;
-  height: 20px;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0) 70%);
+  height: 22px;
+  background: radial-gradient(ellipse at center, rgba(15, 23, 42, 0.16) 0%, rgba(15, 23, 42, 0.05) 55%, rgba(15, 23, 42, 0) 78%);
   border-radius: 50%;
   animation: cartShadowPulse 4s ease-in-out infinite;
   z-index: -1;
+}
+
+.dark-mode .cart-shadow {
+  background: radial-gradient(ellipse at center, rgba(2, 6, 23, 0.38) 0%, rgba(2, 6, 23, 0.16) 60%, rgba(2, 6, 23, 0) 82%);
 }
 
 @keyframes cartShadowPulse {
@@ -160,8 +168,8 @@
 
 .s-widget:hover {
   transform: scale(1.02) translateY(-4px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--glass-border);
 }
 
 /* ─── Add Widget ──────────────────────────── */
@@ -177,7 +185,7 @@
 
 .s-widget-add:hover {
   transform: none;
-  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
+  box-shadow: var(--shadow-md);
 }
 
 /* ─── Category toggle ─────────────────────── */
@@ -208,30 +216,30 @@
 
 /* Supermercato: warm peach pastel (matches --col-martedi) */
 .s-cat-btn.active-food {
-  background: #fff4ec;
-  border-color: #f5c4a0;
-  color: #7c4630;
+  background: var(--category-supermarket-bg);
+  border-color: var(--category-supermarket-border);
+  color: var(--category-supermarket-text);
 }
 
 /* Casa: soft blue pastel (matches --col-venerdi) */
 .s-cat-btn.active-home {
-  background: #eaf4fd;
-  border-color: #a8cff0;
-  color: #2d5a87;
+  background: var(--category-home-bg);
+  border-color: var(--category-home-border);
+  color: var(--category-home-text);
 }
 
 /* Farmaci: soft purple pastel (matches --col-domenica) */
 .s-cat-btn.active-med {
-  background: #f5f3ff;
-  border-color: #c4b5fd;
-  color: #5b21b6;
+  background: var(--category-medicine-bg);
+  border-color: var(--category-medicine-border);
+  color: var(--category-medicine-text);
 }
 
 /* ─── Divider ─────────────────────────────── */
 .s-add-divider {
   width: 1px;
   align-self: stretch;
-  background: linear-gradient(transparent, #e2e8f0 20%, #e2e8f0 80%, transparent);
+  background: linear-gradient(transparent, var(--border-color) 20%, var(--border-color) 80%, transparent);
   flex-shrink: 0;
 }
 
@@ -249,7 +257,7 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #94a3b8;
+  color: var(--text-soft);
 }
 
 .s-input-row {
@@ -864,11 +872,11 @@
 }
 
 .s-accordion-item {
-  background: white;
+  background: var(--surface-color);
   border-radius: 24px;
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
-  border: 1px solid rgba(0,0,0,0.02);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -909,7 +917,7 @@
 .s-acc-label {
   font-size: 1.15rem;
   font-weight: 850;
-  color: #1e293b;
+  color: var(--text-main);
 }
 
 .s-acc-count {
@@ -946,12 +954,12 @@
 .s-empty-small {
   text-align: center;
   padding: 20px;
-  color: #cbd5e0;
+  color: var(--text-soft);
   font-size: 0.85rem;
   font-weight: 600;
-  background: #f8fafc;
+  background: var(--surface-subtle);
   border-radius: 16px;
-  border: 1px dashed #e2e8f0;
+  border: 1px dashed var(--border-color);
 }
 
 /* ─── Mobile Overrides for Header ────────── */
@@ -963,9 +971,9 @@
   margin-top: 24px;
   padding: 32px 24px !important;
   border-radius: 32px !important;
-  background: white;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.06) !important;
-  border: 1px solid rgba(0,0,0,0.03) !important;
+  background: var(--surface-color);
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--border-color) !important;
 }
 
 .is-mobile .s-category-tabs {
@@ -1008,10 +1016,10 @@
 }
 
 .is-mobile .s-input-wrapper {
-  background: #f8fafc;
+  background: var(--surface-subtle);
   border-radius: 20px;
   padding: 4px;
-  border: 1px solid #f1f5f9;
+  border: 1px solid var(--border-color);
 }
 
 .is-mobile .s-input {
@@ -1049,11 +1057,11 @@
 }
 
 .is-mobile .s-item {
-  background: white;
-  border: 1px solid #f1f5f9;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-color);
   padding: 18px 20px;
   border-radius: 20px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+  box-shadow: var(--shadow-sm);
   margin-bottom: 2px;
 }
 
@@ -1069,8 +1077,8 @@
 
 .is-mobile .s-item-del {
   opacity: 1;
-  background: #fef2f2;
-  color: #ef4444;
+  background: var(--danger-soft);
+  color: var(--danger-text);
   width: 36px;
   height: 36px;
   border-radius: 12px;
@@ -1081,9 +1089,9 @@
   position: absolute;
   bottom: 70px;
   left: 0;
-  background: white;
+  background: var(--surface-color);
   border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-lg);
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1091,6 +1099,7 @@
   min-width: 220px;
   z-index: 1001;
   animation: menuPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  border: 1px solid var(--border-color);
 }
 
 @keyframes menuPop {
@@ -1106,7 +1115,7 @@
   border-radius: 14px;
   border: none;
   background: transparent;
-  color: #4a5568;
+  color: var(--text-main);
   font-size: 0.95rem;
   font-weight: 700;
   width: 100%;
@@ -1115,8 +1124,8 @@
 }
 
 .mobile-menu-item:active {
-  background: #f8fafc;
-  color: #4f46e5;
+  background: var(--surface-hover);
+  color: var(--accent-color);
 }
 
 /* --- Suggestions Management Sheet Adjustments --- */
@@ -1125,9 +1134,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: white;
+  background: var(--surface-elevated);
   border-radius: 16px;
-  border: 1px solid #f1f5f9;
+  border: 1px solid var(--border-color);
 }
 
 .tag-badge-preview {

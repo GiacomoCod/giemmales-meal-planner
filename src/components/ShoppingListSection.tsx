@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Check, Trash2, X, Store, Home, Search, Sparkles, ShoppingBag, Pill, MoreVertical } from 'lucide-react';
 import type { ShoppingItem } from '../types';
-import shoppingCartImg from '../assets/shopping-cart-3d.png';
+import shoppingCartImg from '../assets/shopping-cart-3d-cutout.png';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import './ShoppingListSection.css';
 
@@ -343,7 +343,7 @@ export function ShoppingListSection({
       )}
 
       {showSuggestionSettings && (
-        <div className="bottom-sheet-overlay" onClick={() => setShowSuggestionSettings(false)}>
+        <div className="bottom-sheet-overlay">
           <div 
             className="bottom-sheet-content" 
             onClick={e => e.stopPropagation()}
@@ -353,9 +353,6 @@ export function ShoppingListSection({
             <div className="bottom-sheet-drag-handle" />
             <div className="management-sheet-header">
               <h3><Sparkles size={24} /> Suggerimenti</h3>
-              <button className="management-sheet-close" onClick={() => setShowSuggestionSettings(false)}>
-                <X size={24} />
-              </button>
             </div>
 
             <div className="management-sheet-body">

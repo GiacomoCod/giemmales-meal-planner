@@ -17,12 +17,12 @@ import {
   Pill,
   Wallet
 } from 'lucide-react';
-import { format, startOfWeek, addDays, isSameDay, addWeeks } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, addWeeks, differenceInCalendarWeeks } from 'date-fns';
 import { it } from 'date-fns/locale';
 import './HomeSection.css';
 import { MEALS, ROOMS } from '../constants';
 import type { MealPlan, ShoppingItem, Recipe, RoomTask, CleaningLog, TaskSettings, CalendarEvent, Tag, Expense } from '../types';
-import houseImg from '../assets/house-3d.png';
+import houseImg from '../assets/house-3d-cutout.png';
 
 interface HomeSectionProps {
   isMobile?: boolean;
@@ -35,7 +35,7 @@ interface HomeSectionProps {
   taskSettings: TaskSettings;
   events: CalendarEvent[];
   tags: Tag[];
-  onAddEvent: (event: Omit<CalendarEvent, 'id'>) => void;
+  onAddEvent: (event: Omit<CalendarEvent, 'id'>) => Promise<boolean>;
   onDeleteEvent: (id: string) => void;
   onNavigate: (tab: 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance') => void;
   onQuickAction: (action: string) => void;
@@ -65,6 +65,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   const [newEventTime, setNewEventTime] = useState('');
   const [newEventEndTime, setNewEventEndTime] = useState('');
   const [showEndTime, setShowEndTime] = useState(false);
+  const [eventFormError, setEventFormError] = useState<string | null>(null);
+  const [eventFormAttempted, setEventFormAttempted] = useState(false);
   const [offsetWeeks, setOffsetWeeks] = useState(0);
 
   const todayDate = new Date();
@@ -88,22 +90,53 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
     return format(nextDate, 'yyyy-MM-dd');
   };
 
-  const handleAddEventSubmit = (e: React.FormEvent) => {
+  const handleAddEventSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newEventText.trim()) {
-      onAddEvent({
-        text: newEventText.trim(),
-        date: newEventDate,
-        startTime: newEventTime || undefined,
-        endTime: showEndTime && newEventEndTime ? newEventEndTime : undefined,
-        color: '#e2e8f0'
-      });
-      setNewEventText('');
-      setNewEventTime('');
-      setNewEventEndTime('');
-      setShowEndTime(false);
-      setShowEventForm(false);
+    setEventFormAttempted(true);
+    setEventFormError(null);
+    if (!newEventText.trim()) {
+      setEventFormError('Inserisci una descrizione evento prima di salvare.');
+      return;
     }
+
+    if (showEndTime) {
+      if (!newEventTime) {
+        setEventFormError('Se imposti un orario di fine, inserisci anche l’orario di inizio.');
+        return;
+      }
+      if (!newEventEndTime) {
+        setEventFormError('Inserisci l’orario di fine oppure disattiva la relativa opzione.');
+        return;
+      }
+      if (newEventEndTime <= newEventTime) {
+        setEventFormError('L’orario di fine deve essere successivo all’orario di inizio.');
+        return;
+      }
+    }
+
+    const ok = await onAddEvent({
+      text: newEventText.trim(),
+      date: newEventDate,
+      startTime: newEventTime || undefined,
+      endTime: showEndTime && newEventEndTime ? newEventEndTime : undefined,
+      color: '#94a3b8'
+    });
+
+    if (!ok) {
+      setEventFormError('Non sono riuscito a salvare l’evento. Riprova tra un attimo.');
+      return;
+    }
+
+    // Ensure the just-created event is visible in the home weekly calendar.
+    const targetWeekStart = startOfWeek(new Date(newEventDate), { weekStartsOn: 1 });
+    const todayWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    setOffsetWeeks(differenceInCalendarWeeks(targetWeekStart, todayWeekStart, { weekStartsOn: 1 }));
+
+    setNewEventText('');
+    setNewEventTime('');
+    setNewEventEndTime('');
+    setShowEndTime(false);
+    setShowEventForm(false);
   };
 
   const getTagColor = (label: string) => {
@@ -115,6 +148,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   const pendingFood = shoppingList.filter(item => !item.checked && (item.category === 'supermarket' || !item.category)).length;
   const pendingHome = shoppingList.filter(item => !item.checked && item.category === 'home').length;
   const pendingMed = shoppingList.filter(item => !item.checked && item.category === 'medicine').length;
+  const isCreateEventDisabled = !newEventText.trim() || (showEndTime && (!newEventTime || !newEventEndTime || newEventEndTime <= newEventTime));
 
   // Finance: totale spese mese corrente
   const monthFinanceTotal = expenses.reduce((sum, e) => {
@@ -184,7 +218,14 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 </div>
               </div>
             </div>
-            <button className="add-event-btn" onClick={() => setShowEventForm(true)}>
+            <button
+              className="add-event-btn"
+              onClick={() => {
+                setEventFormError(null);
+                setEventFormAttempted(false);
+                setShowEventForm(true);
+              }}
+            >
               <Plus size={isMobile ? 20 : 18} />
               {!isMobile && <span>Nuovo Evento</span>}
             </button>
@@ -311,35 +352,35 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         </div>
 
         {/* Shopping Status */}
-        <div className="home-card card-small glass" onClick={() => onNavigate('shopping')} style={{ cursor: 'pointer' }}>
-          <div className="card-header" style={{ marginBottom: 12 }}>
+        <div className="home-card card-small glass home-summary-card" onClick={() => onNavigate('shopping')}>
+          <div className="card-header home-card-header-tight">
             <ShoppingCart size={20} className="icon-vibrant-green" />
             <span className="card-tag">Spesa</span>
-            <span style={{ marginLeft: 'auto', fontSize: '0.8rem', fontWeight: 700, color: '#10b981' }}>
+            <span className="home-summary-meta shopping">
               {pendingShopping} totali
             </span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#fff4ec', borderRadius: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="home-summary-list">
+            <div className="home-summary-row supermarket">
+              <div className="home-summary-row-label">
                 <Store size={15} color="#7c4630" />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#7c4630' }}>Supermercato</span>
+                <span>Supermercato</span>
               </div>
-              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#7c4630' }}>{pendingFood}</span>
+              <span className="home-summary-row-value">{pendingFood}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#eff6ff', borderRadius: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="home-summary-row home">
+              <div className="home-summary-row-label">
                 <HomeIcon size={15} color="#2d5a87" />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#2d5a87' }}>Casa</span>
+                <span>Casa</span>
               </div>
-              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#2d5a87' }}>{pendingHome}</span>
+              <span className="home-summary-row-value">{pendingHome}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#f5f3ff', borderRadius: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="home-summary-row medicine">
+              <div className="home-summary-row-label">
                 <Pill size={15} color="#5b21b6" />
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5b21b6' }}>Farmaci</span>
+                <span>Farmaci</span>
               </div>
-              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#5b21b6' }}>{pendingMed}</span>
+              <span className="home-summary-row-value">{pendingMed}</span>
             </div>
           </div>
           <ChevronRight className="card-arrow" />
@@ -377,24 +418,24 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         </div>
 
         {/* Finance Widget */}
-        <div className="home-card card-small glass" onClick={() => onNavigate('finance')} style={{ cursor: 'pointer', borderTop: '3px solid #6ee7b7' }}>
-          <div className="card-header" style={{ marginBottom: 12 }}>
-            <Wallet size={20} style={{ color: '#059669' }} />
+        <div className="home-card card-small glass home-summary-card finance-summary-card" onClick={() => onNavigate('finance')}>
+          <div className="card-header home-card-header-tight">
+            <Wallet size={20} className="icon-vibrant-green" />
             <span className="card-tag">Finanze</span>
-            <span style={{ marginLeft: 'auto', fontSize: '0.8rem', fontWeight: 700, color: '#059669' }}>
+            <span className="home-summary-meta finance">
               questo mese
             </span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ padding: '10px 14px', background: '#ecfdf5', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#065f46' }}>Totale spese</span>
-              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#059669' }}>
+          <div className="home-summary-list finance">
+            <div className="finance-summary-total">
+              <span className="finance-summary-label">Totale spese</span>
+              <span className="finance-summary-value">
                 {monthFinanceTotal.toFixed(2).replace('.', ',')} €
               </span>
             </div>
-            <div style={{ padding: '8px 14px', background: '#f8fafc', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>{expenses.filter(e => { const d = new Date(e.date); const n = new Date(); return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth(); }).length} spese registrate</span>
-              <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+            <div className="finance-summary-footnote">
+              <span>{expenses.filter(e => { const d = new Date(e.date); const n = new Date(); return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth(); }).length} spese registrate</span>
+              <ChevronRight size={14} />
             </div>
           </div>
         </div>
@@ -405,11 +446,21 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         <div className="modal-overlay" onClick={() => setShowEventForm(false)}>
           <div className="tag-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="event-modal-title-wrap">
+                <div className="event-modal-title-row">
                 <Calendar size={20} />
                 <h3>Nuovo Evento Casa</h3>
+                </div>
+                <p className="event-modal-subtitle">Crea un promemoria condiviso visibile nel calendario della home.</p>
               </div>
-              <button className="modal-close" onClick={() => setShowEventForm(false)}>
+              <button
+                className="modal-close"
+                onClick={() => {
+                  setEventFormError(null);
+                  setEventFormAttempted(false);
+                  setShowEventForm(false);
+                }}
+              >
                 <X size={20} />
               </button>
             </div>
@@ -421,9 +472,16 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   type="text"
                   placeholder="Esempio: Pizza di gruppo, Visita tecnici..."
                   value={newEventText}
-                  onChange={e => setNewEventText(e.target.value)}
+                  onChange={e => {
+                    setNewEventText(e.target.value);
+                    if (eventFormAttempted) setEventFormError(null);
+                  }}
+                  aria-invalid={eventFormAttempted && !newEventText.trim()}
                   autoFocus
                 />
+                {eventFormAttempted && !newEventText.trim() && (
+                  <div className="event-field-error">La descrizione evento è obbligatoria.</div>
+                )}
               </div>
 
               <div className="form-row">
@@ -435,13 +493,18 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                     onChange={e => setNewEventDate(e.target.value)}
                   />
                 </div>
-                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                  <label className="checkbox-label" style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <div className="form-group event-toggle-group">
+                  <label className="checkbox-label event-toggle-card">
                     <input
                       type="checkbox"
                       checked={showEndTime}
-                      onChange={e => setShowEndTime(e.target.checked)}
-                      style={{ width: '18px', height: '18px' }}
+                      onChange={e => {
+                        setShowEndTime(e.target.checked);
+                        if (!e.target.checked) {
+                          setNewEventEndTime('');
+                          setEventFormError(null);
+                        }
+                      }}
                     />
                     <span>Specifica ora fine</span>
                   </label>
@@ -451,28 +514,42 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               <div className="form-row">
                 <div className="form-group">
                   <label>Orario inizio</label>
-                  <div style={{ position: 'relative' }}>
-                    <Clock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <div className="time-input-wrap">
+                    <Clock size={16} className="time-input-icon start" />
                     <input
                       type="time"
-                      style={{ paddingLeft: '38px' }}
+                      className="time-input start"
                       value={newEventTime}
-                      onChange={e => setNewEventTime(e.target.value)}
+                      onChange={e => {
+                        setNewEventTime(e.target.value);
+                        if (eventFormAttempted) setEventFormError(null);
+                      }}
+                      aria-invalid={eventFormAttempted && showEndTime && !newEventTime}
                     />
                   </div>
+                  {eventFormAttempted && showEndTime && !newEventTime && (
+                    <div className="event-field-error">Inserisci l’orario di inizio.</div>
+                  )}
                 </div>
                 {showEndTime && (
                   <div className="form-group">
                     <label>Orario fine</label>
-                    <div style={{ position: 'relative' }}>
-                      <Clock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#ef4444' }} />
+                    <div className="time-input-wrap">
+                      <Clock size={16} className="time-input-icon end" />
                       <input
                         type="time"
-                        style={{ paddingLeft: '38px', borderColor: '#ef4444' }}
+                        className="time-input end"
                         value={newEventEndTime}
-                        onChange={e => setNewEventEndTime(e.target.value)}
+                        onChange={e => {
+                          setNewEventEndTime(e.target.value);
+                          if (eventFormAttempted) setEventFormError(null);
+                        }}
+                        aria-invalid={eventFormAttempted && !newEventEndTime}
                       />
                     </div>
+                    {eventFormAttempted && !newEventEndTime && (
+                      <div className="event-field-error">Inserisci l’orario di fine.</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -480,11 +557,19 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               <div className="form-hint">
                 Questo evento sarà visibile a tutti i coinquilini nel calendario della home.
               </div>
+              {eventFormError && (
+                <div className="event-form-error">
+                  {eventFormError}
+                </div>
+              )}
 
-              <button type="submit" className="add-tag-btn" style={{ width: '100%', marginTop: '1rem', justifyContent: 'center' }}>
+              <button type="submit" className="add-tag-btn event-submit-btn" disabled={isCreateEventDisabled}>
                 <Plus size={18} />
                 <span>Crea Evento</span>
               </button>
+              {eventFormAttempted && !newEventText.trim() && (
+                <div className="event-submit-hint">Completa i campi obbligatori per continuare.</div>
+              )}
             </form>
           </div>
         </div>
@@ -492,4 +577,3 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
     </div>
   );
 };
-

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Trash2, Check, X } from 'lucide-react';
 import type { MealEntry, Tag } from '../types';
 import './MealSlot.css';
@@ -90,6 +91,82 @@ export function MealSlot({
     return tag ? tag.color : '#e2e8f0';
   };
 
+  const getTagButtonStyle = (tag: Tag, isSelected: boolean): React.CSSProperties => ({
+    background: isSelected
+      ? `color-mix(in srgb, ${tag.color} 88%, var(--surface-color))`
+      : `color-mix(in srgb, ${tag.color} 12%, var(--surface-color))`,
+    borderColor: isSelected
+      ? `color-mix(in srgb, ${tag.color} 84%, var(--surface-color))`
+      : `color-mix(in srgb, ${tag.color} 32%, var(--border-color))`,
+    color: 'var(--text-main)'
+  });
+
+  const pickerTitle = pickerTargetId ? 'Modifica chi mangia' : 'Chi mangia questo pasto?';
+  const pickerSubtitle = pickerTargetId
+    ? 'Aggiorna le targhette di questo piatto.'
+    : pendingText
+      ? `"${pendingText}" sarà assegnato alle targhette selezionate.`
+      : 'Seleziona una o più targhette, oppure continua senza assegnazione.';
+
+  const pickerDialog = showAssigneePicker && typeof document !== 'undefined'
+    ? createPortal(
+        <div className="meal-picker-overlay" onClick={cancelTags}>
+          <div className="meal-picker-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="meal-picker-header">
+              <div className="meal-picker-heading">
+                <h4>{pickerTitle}</h4>
+                <p>{pickerSubtitle}</p>
+              </div>
+              <button onClick={cancelTags} className="assignee-modal-close" type="button"><X size={20} /></button>
+            </div>
+
+            <div className="meal-picker-body">
+              {tags.length === 0 ? (
+                <p className="no-tags-msg">Nessuna targhetta configurata.</p>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={`multi-tag-btn multi-tag-btn-clear ${selectedTags.length === 0 ? 'selected' : ''}`}
+                    onClick={() => setSelectedTags([])}
+                  >
+                    Nessuna targhetta
+                  </button>
+                  <div className="multi-tag-grid">
+                    {tags.map(tag => {
+                      const isSelected = selectedTags.includes(tag.label);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          className={`multi-tag-btn ${isSelected ? 'selected' : ''}`}
+                          style={getTagButtonStyle(tag, isSelected)}
+                          onClick={() => toggleTag(tag.label)}
+                        >
+                          {isSelected && <Check size={16} />}
+                          {tag.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="meal-picker-footer">
+              <button className="assignee-modal-secondary" onClick={cancelTags} type="button">
+                Annulla
+              </button>
+              <button className="assignee-modal-confirm" onClick={confirmTags} type="button">
+                <Check size={18} /> Conferma
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
+
   return (
     <div className="meal-slot">
       {!hideHeader && (
@@ -125,7 +202,10 @@ export function MealSlot({
                       </button>
                     ))}
                     {entryTags.length > 2 && (
-                      <button type="button" className="assignee-badge" style={{ backgroundColor: '#e2e8f0', color: '#475569' }}>
+                      <button
+                        type="button"
+                        className="assignee-badge assignee-badge-more"
+                      >
                         +{entryTags.length - 2}
                       </button>
                     )}
@@ -200,52 +280,7 @@ export function MealSlot({
           />
         </div>
       </form>
-
-      {/* Global Assignee Picker Modal */}
-      {showAssigneePicker && (
-        <div className="assignee-modal-overlay" onClick={cancelTags}>
-          <div className="assignee-modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="assignee-modal-header">
-              <h4>Chi mangia?</h4>
-              <button onClick={cancelTags} className="assignee-modal-close"><X size={20} /></button>
-            </div>
-            
-            <div className="assignee-modal-body">
-              {tags.length === 0 ? (
-                <p className="no-tags-msg">Nessuna targhetta configurata.</p>
-              ) : (
-                <div className="multi-tag-grid">
-                  {tags.map(tag => {
-                    const isSelected = selectedTags.includes(tag.label);
-                    return (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        className={`multi-tag-btn ${isSelected ? 'selected' : ''}`}
-                        style={{ 
-                          backgroundColor: isSelected ? tag.color : 'transparent',
-                          borderColor: tag.color 
-                        }}
-                        onClick={() => toggleTag(tag.label)}
-                      >
-                        {isSelected && <Check size={16} />}
-                        {tag.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="assignee-modal-footer">
-              <button className="assignee-modal-confirm" onClick={confirmTags}>
-                <Check size={18} /> Conferma
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {pickerDialog}
     </div>
   );
 }
-

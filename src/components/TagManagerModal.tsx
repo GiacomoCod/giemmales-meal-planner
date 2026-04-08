@@ -12,6 +12,8 @@ interface TagManagerModalProps {
   onClose: () => void;
   title?: string;
   hint?: string;
+  hideCloseButton?: boolean;
+  closeOnOverlay?: boolean;
 }
 
 const PRESET_COLORS = [
@@ -26,7 +28,9 @@ export function TagManagerModal({
   onDeleteTag, 
   onClose,
   title = "Gestione Targhette",
-  hint = "Le targhette permettono di assegnare i pasti a persone diverse."
+  hint = "Le targhette permettono di assegnare i pasti a persone diverse.",
+  hideCloseButton = false,
+  closeOnOverlay = true
 }: TagManagerModalProps) {
   const [newTagLabel, setNewTagLabel] = useState('');
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
@@ -51,6 +55,7 @@ export function TagManagerModal({
 
   return (
     <div className="bottom-sheet-overlay" onClick={() => {
+      if (!closeOnOverlay) return;
       onClose();
       setShowTagDeleteConfirm(null);
     }}>
@@ -66,12 +71,14 @@ export function TagManagerModal({
             <h3><Users size={20} /> {title}</h3>
             <InfoTooltip text={hint} />
           </div>
-          <button className="tm-modal-close" onClick={() => {
-            onClose();
-            setShowTagDeleteConfirm(null);
-          }}>
-            <X size={20} />
-          </button>
+          {!hideCloseButton && (
+            <button className="tm-modal-close" onClick={() => {
+              onClose();
+              setShowTagDeleteConfirm(null);
+            }}>
+              <X size={20} />
+            </button>
+          )}
         </div>
         
         <div className="tm-tags-list">

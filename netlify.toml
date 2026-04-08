@@ -6,3 +6,9 @@
   NODE_VERSION = "22.17.1"
   NPM_FLAGS = "--legacy-peer-deps"
   NPM_CONFIG_LEGACY_PEER_DEPS = "true"
+
+[[redirects]]
+  from = "/api/push/send-test"
+  to = "/.netlify/functions/push-send-test"
+  status = 200
+  force = true

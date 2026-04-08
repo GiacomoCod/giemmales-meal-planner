@@ -26,8 +26,8 @@
   font-size: 0.85rem;
   font-weight: 800;
   text-transform: uppercase;
-  color: #f97316; /* Orange theme for recipes */
-  background: rgba(249, 115, 22, 0.1);
+  color: #f97316;
+  background: color-mix(in srgb, #f97316 14%, transparent);
   padding: 6px 14px;
   border-radius: 12px;
   margin-bottom: 12px;
@@ -85,7 +85,11 @@
   /* Designer's Mask Trick */
   -webkit-mask-image: radial-gradient(circle, black 45%, transparent 78%);
   mask-image: radial-gradient(circle, black 45%, transparent 78%);
-  filter: brightness(1.02) contrast(1.02);
+  filter: drop-shadow(0 14px 22px rgba(15, 23, 42, 0.1)) drop-shadow(0 28px 40px rgba(15, 23, 42, 0.09)) brightness(1.02) contrast(1.03);
+}
+
+.dark-mode .floating-book {
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.3)) drop-shadow(0 34px 52px rgba(0, 0, 0, 0.28)) brightness(0.98) contrast(1.08);
 }
 
 @keyframes floatBook {
@@ -99,11 +103,15 @@
   left: 50%;
   transform: translateX(-50%);
   width: 140px;
-  height: 15px;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0) 70%);
+  height: 20px;
+  background: radial-gradient(ellipse at center, rgba(15, 23, 42, 0.16) 0%, rgba(15, 23, 42, 0.05) 55%, rgba(15, 23, 42, 0) 78%);
   border-radius: 50%;
   animation: bookShadowPulse 4.5s ease-in-out infinite;
   z-index: -1;
+}
+
+.dark-mode .book-shadow {
+  background: radial-gradient(ellipse at center, rgba(2, 6, 23, 0.38) 0%, rgba(2, 6, 23, 0.16) 60%, rgba(2, 6, 23, 0) 82%);
 }
 
 @keyframes bookShadowPulse {

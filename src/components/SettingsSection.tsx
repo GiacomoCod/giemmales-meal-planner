@@ -3,6 +3,7 @@ import { updateProfile, updatePassword as firebaseUpdatePassword } from 'firebas
 import type { User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { getPushStatus, isPushSupportedInBrowser, subscribeToPush, unsubscribeFromPush } from '../pushNotifications';
 import { 
   Save, 
   Lock, 
@@ -18,7 +19,8 @@ import {
   ShoppingCart,
   BookOpen,
   Sparkles,
-  Wallet
+  Wallet,
+  Bell
 } from 'lucide-react';
 import './SettingsSection.css';
 
@@ -43,7 +45,7 @@ export function SettingsSection({
   isDarkMode,
   onToggleDarkMode
 }: SettingsSectionProps) {
-  const [activeView, setActiveView] = useState<'menu' | 'profile' | 'security' | 'customization' | 'privacy'>(isMobile ? 'menu' : 'profile');
+  const [activeView, setActiveView] = useState<'menu' | 'profile' | 'security' | 'customization' | 'notifications' | 'privacy'>(isMobile ? 'menu' : 'profile');
   
   const [houseName, setHouseName] = useState(isGiemmale ? 'Casa dei Giemmale' : (user?.displayName || user?.email?.split('@')[0] || ''));
   const [photoUrl, setPhotoUrl] = useState(user?.photoURL || '');
@@ -52,6 +54,10 @@ export function SettingsSection({
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
+  const [isPushStatusLoading, setIsPushStatusLoading] = useState(true);
+  const [isPushUpdating, setIsPushUpdating] = useState(false);
 
   // Sync active view when switching between mobile and desktop if needed
   useEffect(() => {
@@ -73,6 +79,32 @@ export function SettingsSection({
       }
     };
     fetchAvatar();
+  }, [activeProfile.id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPushStatus = async () => {
+      setIsPushStatusLoading(true);
+      try {
+        const status = await getPushStatus(activeProfile.id);
+        if (!mounted) return;
+        setPushEnabled(status.subscribed);
+        setPushPermission(status.permission);
+      } catch (err) {
+        if (!mounted) return;
+        setPushEnabled(false);
+        setPushPermission(isPushSupportedInBrowser() ? Notification.permission : 'unsupported');
+      } finally {
+        if (mounted) setIsPushStatusLoading(false);
+      }
+    };
+
+    loadPushStatus();
+
+    return () => {
+      mounted = false;
+    };
   }, [activeProfile.id]);
 
   const displayPicture = photoUrl || 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=200&h=200';
@@ -303,6 +335,78 @@ export function SettingsSection({
     </div>
   );
 
+  const handleTogglePush = async () => {
+    if (isPushUpdating || isPushStatusLoading) return;
+
+    if (!user) {
+      setErrorMsg('Devi effettuare il login per attivare le notifiche push.');
+      return;
+    }
+
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    setIsPushUpdating(true);
+
+    try {
+      if (pushEnabled) {
+        await unsubscribeFromPush(activeProfile.id);
+        setPushEnabled(false);
+        setPushPermission(Notification.permission);
+        setSuccessMsg('Notifiche push disattivate su questo dispositivo.');
+      } else {
+        await subscribeToPush(activeProfile.id, user.uid);
+        setPushEnabled(true);
+        setPushPermission('granted');
+        setSuccessMsg('Notifiche push attivate con successo.');
+      }
+    } catch (err) {
+      console.error(err);
+      setPushPermission(isPushSupportedInBrowser() ? Notification.permission : 'unsupported');
+      setErrorMsg(pushEnabled ? 'Impossibile disattivare le notifiche push.' : 'Impossibile attivare le notifiche push.');
+    } finally {
+      setIsPushUpdating(false);
+    }
+  };
+
+  const renderNotificationsView = () => (
+    <div className="settings-view-form">
+      <div className="form-inner">
+        <h3>
+          <Bell size={20} className="settings-icon" />
+          Notifiche Push
+        </h3>
+
+        <div className="customization-group notifications-group">
+          <h3>Stato Dispositivo</h3>
+          <div className="toggle-list">
+            <div
+              className={`toggle-item ${pushEnabled ? 'active' : ''} ${isPushStatusLoading || isPushUpdating ? 'is-loading' : ''}`}
+              onClick={handleTogglePush}
+            >
+              <div className="toggle-item-left">
+                <div className="section-icon-box notifications"><Bell size={18} /></div>
+                <div className="toggle-info">
+                  <span>{pushEnabled ? 'Notifiche attive' : 'Notifiche disattivate'}</span>
+                  <small>
+                    {isPushStatusLoading && 'Verifica stato in corso...'}
+                    {!isPushStatusLoading && pushPermission === 'unsupported' && 'Browser non supportato per Web Push.'}
+                    {!isPushStatusLoading && pushPermission === 'default' && 'Clicca per concedere il consenso.'}
+                    {!isPushStatusLoading && pushPermission === 'denied' && 'Permesso bloccato: abilita notifiche dalle impostazioni del browser.'}
+                    {!isPushStatusLoading && pushPermission === 'granted' && 'Dispositivo registrato per ricevere push.'}
+                  </small>
+                </div>
+              </div>
+              <div className="toggle-switch"></div>
+            </div>
+          </div>
+          <p className="push-hint">
+            Le notifiche push sono legate al dispositivo corrente. Ripeti l&apos;attivazione su ogni browser/dispositivo che vuoi usare.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderPrivacyPolicy = () => (
     <div className="settings-form privacy-policy">
       <div className="form-inner">
@@ -375,6 +479,17 @@ export function SettingsSection({
       </div>
 
       <div 
+        className={`settings-menu-item ${activeView === 'notifications' ? 'active' : ''}`} 
+        onClick={() => { setActiveView('notifications'); setSuccessMsg(null); setErrorMsg(null); }}
+      >
+         <div className="menu-item-left">
+            <div className="menu-icon-bg notifications"><Bell size={22} /></div>
+            <span>Notifiche Push</span>
+         </div>
+         <ChevronRight size={20} className="menu-chevron" />
+      </div>
+
+      <div 
         className={`settings-menu-item ${activeView === 'privacy' ? 'active' : ''}`} 
         onClick={() => { setActiveView('privacy'); setSuccessMsg(null); setErrorMsg(null); }}
       >
@@ -430,6 +545,7 @@ export function SettingsSection({
               {activeView === 'profile' && renderProfileForm()}
               {activeView === 'security' && renderSecurityForm()}
               {activeView === 'customization' && renderCustomizationView()}
+              {activeView === 'notifications' && renderNotificationsView()}
               {activeView === 'privacy' && renderPrivacyPolicy()}
             </div>
           )}

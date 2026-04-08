@@ -9,7 +9,8 @@ import { it } from 'date-fns/locale';
 import type { Expense, ExpenseCategory, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
-import financeImg from '../assets/finance-3d.png';
+import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import financeImg from '../assets/finance-3d-cutout.png';
 import './FinanceSection.css';
 
 /* ============================================================
@@ -142,6 +143,10 @@ export function FinanceSection({
   const [showMobileAddForm, setShowMobileAddForm] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showExpensesSheet, setShowExpensesSheet] = useState(false);
+  const { transform: expensesSheetTransform, handlers: expensesSheetHandlers } = useSwipeToDismiss(() => {
+    setShowExpensesSheet(false);
+    setShowMoreMenu(false);
+  }, 100, showExpensesSheet);
 
   // Sync paidBy when tags load
   React.useEffect(() => {
@@ -344,7 +349,7 @@ export function FinanceSection({
 
         {isMobile && (
           <div className="f-mobile-summary-cards">
-             <div className="f-summary-card total" style={{ background: '#ecfdf5', borderBottom: '4px solid #10b981' }}>
+             <div className="f-summary-card total">
                 <span className="f-sum-label">Totale {format(viewMonth, 'MMM', { locale: it })}</span>
                 <span className="f-sum-value">{formatEur(monthTotal)}</span>
              </div>
@@ -572,13 +577,16 @@ export function FinanceSection({
               </button>
 
               {showExpensesSheet && (
-                <div className="management-sheet-overlay" onClick={() => setShowExpensesSheet(false)}>
-                  <div className="management-sheet-content" onClick={e => e.stopPropagation()}>
+                <div className="management-sheet-overlay">
+                  <div
+                    className="management-sheet-content"
+                    onClick={e => e.stopPropagation()}
+                    style={{ transform: expensesSheetTransform }}
+                    {...expensesSheetHandlers}
+                  >
+                    <div className="bottom-sheet-drag-handle" />
                     <div className="management-sheet-header">
                       <h3><Wallet size={24} /> Elenco Spese</h3>
-                      <button className="management-sheet-close" onClick={() => setShowExpensesSheet(false)}>
-                        <X size={24} />
-                      </button>
                     </div>
                     <div className="management-sheet-body">
                       {filteredExpenses.map(exp => (
@@ -611,6 +619,8 @@ export function FinanceSection({
           onAddTag={onAddTag}
           onDeleteTag={onDeleteTag}
           onClose={() => setShowTagSettings(false)}
+          hideCloseButton={isMobile}
+          closeOnOverlay={!isMobile}
           title="Coinquilini"
           hint="I coinquilini partecipano alla divisione delle spese. Puoi aggiungere o rimuovere partecipanti."
         />

@@ -3,7 +3,8 @@ import { BookOpen, Plus, Trash2, X, Pencil, ShoppingCart, Check, Settings, MoreV
 import type { Recipe, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
-import cookbookImg from '../assets/cookbook-3d.png';
+import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import cookbookImg from '../assets/cookbook-3d-cutout.png';
 import './RecipesSection.css';
 
 interface RecipesSectionProps {
@@ -52,6 +53,10 @@ export function RecipesSection({
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
   const [swipingId, setSwipingId] = useState<string | null>(null);
+  const { transform: recipesSheetTransform, handlers: recipesSheetHandlers } = useSwipeToDismiss(() => {
+    setShowRecipesSheet(false);
+    setShowMoreMenu(false);
+  }, 100, showRecipesSheet);
   // Swipe logic
   const handleTouchStart = (e: React.TouchEvent, id: string) => {
     setTouchStartX(e.touches[0].clientX);
@@ -81,6 +86,17 @@ export function RecipesSection({
     if (!label) return null;
     return tags.find(t => t.label === label);
   };
+
+  const getTagBadgeStyle = (label?: string) => {
+    const tag = getTagByLabel(label);
+    const color = tag?.color || '#cbd5e1';
+    return {
+      backgroundColor: `${color}b3`,
+      borderColor: `${color}66`,
+      color: 'var(--text-main)'
+    } as React.CSSProperties;
+  };
+
   return (
     <>
       <main className="main-content recipes-only">
@@ -125,9 +141,7 @@ export function RecipesSection({
                   {recipe.authorId && (
                     <div 
                       className="recipe-author-badge" 
-                      style={{ 
-                        backgroundColor: getTagByLabel(recipe.authorId)?.color || '#f1f5f9'
-                      }}
+                      style={getTagBadgeStyle(recipe.authorId)}
                     >
                       {recipe.authorId}
                     </div>
@@ -218,13 +232,16 @@ export function RecipesSection({
 
               {/* Recipes Management Sheet */}
               {showRecipesSheet && (
-                <div className="management-sheet-overlay" onClick={() => setShowRecipesSheet(false)}>
-                  <div className="management-sheet-content" onClick={e => e.stopPropagation()}>
+                <div className="management-sheet-overlay">
+                  <div
+                    className="management-sheet-content"
+                    onClick={e => e.stopPropagation()}
+                    style={{ transform: recipesSheetTransform }}
+                    {...recipesSheetHandlers}
+                  >
+                    <div className="bottom-sheet-drag-handle" />
                     <div className="management-sheet-header">
                       <h3><BookOpen size={24} /> Elenco Ricette</h3>
-                      <button className="management-sheet-close" onClick={() => setShowRecipesSheet(false)}>
-                        <X size={24} />
-                      </button>
                     </div>
                     <div className="management-sheet-body">
                       {recipes.map(recipe => (
@@ -322,7 +339,9 @@ export function RecipesSection({
                               type="button"
                               className={`author-pick-btn ${tempRecipe?.authorId === tag.label ? 'active' : ''}`}
                               style={{
-                                backgroundColor: tag.color,
+                                backgroundColor: `${tag.color}b3`,
+                                borderColor: `${tag.color}66`,
+                                color: 'var(--text-main)',
                                 opacity: tempRecipe?.authorId === tag.label ? 1 : 0.6
                               }}
                               onClick={() => setTempRecipe(prev => prev ? { ...prev, authorId: tag.label } : null)}
@@ -375,9 +394,7 @@ export function RecipesSection({
                           {selectedRecipe.authorId && (
                             <span 
                               className="recipe-author-badge-modal"
-                              style={{
-                                backgroundColor: getTagByLabel(selectedRecipe.authorId)?.color || '#f1f5f9'
-                              }}
+                              style={getTagBadgeStyle(selectedRecipe.authorId)}
                             >
                               Creatore: {selectedRecipe.authorId}
                             </span>
@@ -450,6 +467,8 @@ export function RecipesSection({
           onAddTag={onAddTag}
           onDeleteTag={onDeleteTag}
           onClose={() => setShowTagSettings(false)}
+          hideCloseButton={isMobile}
+          closeOnOverlay={!isMobile}
           title="Firme Ricette"
           hint="Le targhette permettono di firmare le ricette per indicare chi le ha create."
         />

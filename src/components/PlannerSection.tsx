@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Settings, X, Trash2, MoreVertical, Users, Calendar as CalendarIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings, Trash2, MoreVertical, Users, Calendar as CalendarIcon } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, addDays } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { MealSlot } from './MealSlot';
@@ -7,7 +7,8 @@ import { MEALS, PASTEL_VARS } from '../constants';
 import type { MealPlan, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
-import spaghettiImg from '../assets/spaghetti-3d.png';
+import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import spaghettiImg from '../assets/spaghetti-3d-cutout.png';
 import './PlannerSection.css';
 
 interface PlannerSectionProps {
@@ -44,6 +45,10 @@ export function PlannerSection({
   const [showTagSettings, setShowTagSettings] = useState(false);
   const [showPlannerSheet, setShowPlannerSheet] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const { transform: plannerSheetTransform, handlers: plannerSheetHandlers } = useSwipeToDismiss(() => {
+    setShowPlannerSheet(false);
+    setShowMoreMenu(false);
+  }, 100, showPlannerSheet);
 
   const handlePrevWeek = () => {
     const newDate = addDays(selectedWeekStart, -7);
@@ -188,22 +193,27 @@ export function PlannerSection({
             onAddTag={onAddTag}
             onDeleteTag={onDeleteTag}
             onClose={() => setShowTagSettings(false)}
+            hideCloseButton={isMobile}
+            closeOnOverlay={!isMobile}
           />
         )}
 
         {showPlannerSheet && (
-          <div className="management-sheet-overlay" onClick={() => setShowPlannerSheet(false)}>
-            <div className="management-sheet-content" onClick={e => e.stopPropagation()}>
+          <div className="management-sheet-overlay">
+            <div
+              className="management-sheet-content"
+              onClick={e => e.stopPropagation()}
+              style={{ transform: plannerSheetTransform }}
+              {...plannerSheetHandlers}
+            >
+              <div className="bottom-sheet-drag-handle" />
               <div className="management-sheet-header">
                 <h3><CalendarIcon size={24} /> Gestione Menù</h3>
-                <button className="management-sheet-close" onClick={() => setShowPlannerSheet(false)}>
-                  <X size={24} />
-                </button>
               </div>
 
               <div className="management-sheet-body">
                 {activeWeekDays.length === 0 ? (
-                  <div className="f-empty-msg" style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div className="f-empty-msg planner-management-empty">
                     Nessuna settimana selezionata.
                   </div>
                 ) : (
@@ -236,14 +246,14 @@ export function PlannerSection({
                                     return (
                                       <div key={item.id} className="planner-sheet-item">
                                         <span className="p-item-text">{item.text}</span>
-                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', flexShrink: 0 }}>
+                                        <div className="p-item-tags">
                                           {entryTags.slice(0, 2).map(a => (
                                             <span key={a} className="p-item-tag" style={{ background: tags.find(t => t.label === a)?.color || tags.find(t => t.id === a)?.color }}>
                                               {a}
                                             </span>
                                           ))}
                                           {entryTags.length > 2 && (
-                                            <span className="p-item-tag" style={{ background: '#e2e8f0', color: '#475569' }}>
+                                            <span className="p-item-tag p-item-tag-more">
                                               +{entryTags.length - 2}
                                             </span>
                                           )}
@@ -306,7 +316,7 @@ export function PlannerSection({
 
           <div className="notes-card">
             <div className="notes-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="notes-title-row">
                 <h3 className="notes-title">Note della Settimana 📝</h3>
                 <InfoTooltip text="Appunti veloci per la settimana: promemoria, eventi o liste rapide che non rientrano nel calendario pasti." position="right" />
               </div>
@@ -358,7 +368,7 @@ export function PlannerSection({
             const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
 
             return (
-              <div key={dateKey} className="day-card" style={{ backgroundColor: PASTEL_VARS[cssIndex] }}>
+              <div key={dateKey} className="day-card" style={{ '--day-bg': PASTEL_VARS[cssIndex] } as any}>
                 <h2 className="day-title">{dayName}</h2>
                 <div className="meals-container">
                   {MEALS.map((meal) => (
@@ -391,4 +401,3 @@ export function PlannerSection({
     </>
   );
 }
-

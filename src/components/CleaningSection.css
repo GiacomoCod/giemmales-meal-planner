@@ -26,8 +26,8 @@
   font-size: 0.85rem;
   font-weight: 800;
   text-transform: uppercase;
-  color: #16a34a; /* Green theme for cleaning */
-  background: rgba(22, 163, 74, 0.1);
+  color: var(--success-text);
+  background: color-mix(in srgb, var(--success-text) 14%, transparent);
   padding: 6px 14px;
   border-radius: 12px;
   margin-bottom: 12px;
@@ -55,6 +55,16 @@
   margin-top: 8px;
 }
 
+.cleaning-hero-actions {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+}
+
+.cleaning-tag-settings-inline {
+  margin-left: auto;
+}
+
 /* Graphic Area with Bubbles */
 .cleaning-hero-graphic {
   position: relative;
@@ -78,6 +88,11 @@
   /* Designer's Mask */
   -webkit-mask-image: radial-gradient(circle, black 45%, transparent 75%);
   mask-image: radial-gradient(circle, black 45%, transparent 75%);
+  filter: drop-shadow(0 14px 22px rgba(15, 23, 42, 0.1)) drop-shadow(0 28px 40px rgba(15, 23, 42, 0.09)) brightness(1.02) contrast(1.03);
+}
+
+.dark-mode .floating-kit {
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.3)) drop-shadow(0 32px 50px rgba(0, 0, 0, 0.28)) brightness(0.98) contrast(1.08);
 }
 
 @keyframes floatKit {
@@ -91,11 +106,15 @@
   left: 50%;
   transform: translateX(-50%);
   width: 120px;
-  height: 12px;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0) 70%);
+  height: 18px;
+  background: radial-gradient(ellipse at center, rgba(15, 23, 42, 0.16) 0%, rgba(15, 23, 42, 0.05) 55%, rgba(15, 23, 42, 0) 78%);
   border-radius: 50%;
   animation: kitShadowPulse 5s ease-in-out infinite;
   z-index: -1;
+}
+
+.dark-mode .kit-shadow {
+  background: radial-gradient(ellipse at center, rgba(2, 6, 23, 0.38) 0%, rgba(2, 6, 23, 0.16) 60%, rgba(2, 6, 23, 0) 82%);
 }
 
 @keyframes kitShadowPulse {
@@ -133,9 +152,9 @@
 
 .notes-textarea:focus {
   outline: none;
-  border-color: #16a34a;
+  border-color: var(--success-text);
   background: var(--surface-color);
-  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.1);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success-text) 14%, transparent);
 }
 
 @keyframes floatBubble {
@@ -156,6 +175,11 @@
   
   .cleaning-hero-header-content {
     justify-content: center;
+  }
+
+  .cleaning-hero-actions {
+    justify-content: center;
+    margin-top: 18px;
   }
   
   .cleaning-hero-page-title {

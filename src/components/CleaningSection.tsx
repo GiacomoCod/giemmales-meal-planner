@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Sparkles, ChevronRight as ChevronRightIcon, Plus, Check, X, Calendar as CalendarIcon, RefreshCw, Trash2, Minus, MoreVertical, List } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, ChevronRight as ChevronRightIcon, Plus, Check, X, Calendar as CalendarIcon, RefreshCw, Trash2, Minus, MoreVertical, List, Settings, Users, Pencil, History } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, parseISO } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { ROOMS } from '../constants';
-import type { RoomTask, CleaningLog, TaskSettings, TaskUnit } from '../types';
+import type { RoomTask, CleaningLog, TaskSettings, TaskUnit, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
-import cleaningImg from '../assets/cleaning-3d.png';
+import { TagManagerModal } from './TagManagerModal';
+import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import cleaningImg from '../assets/cleaning-3d-cutout.png';
 import './CleaningSection.css';
 
 interface CleaningSectionProps {
@@ -31,11 +33,9 @@ interface CleaningSectionProps {
   roomTasks: RoomTask[];
   cleaningLogs: CleaningLog[];
   handleDeleteRoomTask: (taskId: string) => void;
-  datePickerTaskId: string | null;
-  setDatePickerTaskId: (id: string | null) => void;
-  customDate: string;
-  setCustomDate: (date: string) => void;
-  handleCompleteTask: (roomId: string, taskName: string, dateStr?: string) => void;
+  handleCompleteTask: (roomId: string, taskName: string, dateStr?: string, performedByTagId?: string) => void;
+  handleUpdateCleaningLog: (logId: string, dateStr: string, performedByTagId?: string) => Promise<void> | void;
+  handleDeleteCleaningLog: (logId: string) => Promise<void> | void;
   taskSettings: TaskSettings;
   showTaskSettings: string | null;
   setShowTaskSettings: (taskName: string | null) => void;
@@ -43,20 +43,33 @@ interface CleaningSectionProps {
   setEditingFrequency: React.Dispatch<React.SetStateAction<{ value: number, unit: TaskUnit }>>;
   handleUpdateTaskFrequency: (taskType: string, value: number, unit: TaskUnit) => void;
   isMobile: boolean;
+  tags: Tag[];
+  onAddTag: (tag: Tag) => void;
+  onDeleteTag: (tagId: string) => void;
 }
 
 export function CleaningSection({
   currentMonth, prevMonth, nextMonth, calendarDays, selectedWeekStart, selectedWeekEnd, monthStart,
   setSelectedWeekStart, setCurrentMonth, cleaningNotes, isSavingCleaningNotes, handleUpdateCleaningNotes,
   selectedRoom, setSelectedRoom, showAddTask, setShowAddTask, newTaskName, setNewTaskName, handleAddTask,
-  roomTasks, cleaningLogs, handleDeleteRoomTask, datePickerTaskId, setDatePickerTaskId, customDate, setCustomDate,
-  handleCompleteTask, taskSettings, showTaskSettings, setShowTaskSettings, editingFrequency, setEditingFrequency,
-  handleUpdateTaskFrequency, isMobile
+  roomTasks, cleaningLogs, handleDeleteRoomTask, handleCompleteTask, handleUpdateCleaningLog, handleDeleteCleaningLog,
+  taskSettings, showTaskSettings, setShowTaskSettings, editingFrequency, setEditingFrequency,
+  handleUpdateTaskFrequency, isMobile, tags, onAddTag, onDeleteTag
 }: CleaningSectionProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showTasksSheet, setShowTasksSheet] = useState(false);
+  const [showTagSettings, setShowTagSettings] = useState(false);
+  const [taskManager, setTaskManager] = useState<{ taskId: string; roomId: string; taskName: string } | null>(null);
+  const [managerDate, setManagerDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [managerPerformerId, setManagerPerformerId] = useState('');
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [logToDeleteId, setLogToDeleteId] = useState<string | null>(null);
+  const { transform: tasksSheetTransform, handlers: tasksSheetHandlers } = useSwipeToDismiss(() => {
+    setShowTasksSheet(false);
+    setShowMoreMenu(false);
+  }, 100, showTasksSheet);
 
   const getTaskUrgency = (logDate: string, taskType: string, now: number) => {
     if (!logDate) return { progress: 0, color: '#48bb78', daysRemaining: null };
@@ -78,6 +91,43 @@ export function CleaningSection({
 
 
     return { progress, color, daysRemaining };
+  };
+
+  const sortLogs = (logs: CleaningLog[]) =>
+    logs.sort((a, b) => {
+      const dateOrder = b.date.localeCompare(a.date);
+      if (dateOrder !== 0) return dateOrder;
+      return b.timestamp - a.timestamp;
+    });
+
+  const getLogPerformer = (log: CleaningLog) => {
+    const tagById = log.performedByTagId ? tags.find(t => t.id === log.performedByTagId) : null;
+    if (tagById) return tagById;
+    if (log.performedByLabel) {
+      return {
+        id: `legacy-${log.id}`,
+        label: log.performedByLabel,
+        color: 'color-mix(in srgb, var(--surface-subtle) 88%, var(--surface-elevated))'
+      } as Tag;
+    }
+    return null;
+  };
+
+  const openTaskManager = (task: RoomTask, latestLog: CleaningLog | null) => {
+    setTaskManager({ taskId: task.id, roomId: task.roomId, taskName: task.taskName });
+    setEditingLogId(null);
+    setLogToDeleteId(null);
+    setManagerDate(format(new Date(), 'yyyy-MM-dd'));
+    const defaultPerformer = latestLog?.performedByTagId && tags.some(t => t.id === latestLog.performedByTagId)
+      ? latestLog.performedByTagId
+      : tags[0]?.id || '';
+    setManagerPerformerId(defaultPerformer);
+  };
+
+  const closeTaskManager = () => {
+    setTaskManager(null);
+    setEditingLogId(null);
+    setLogToDeleteId(null);
   };
 
   return (
@@ -149,6 +199,16 @@ export function CleaningSection({
                   <InfoTooltip text="Tieni traccia della pulizia della casa. Le barre colorate indicano l'urgenza: dal verde (pulito) al rosso (necessario). Clicca su una stanza per gestire i compiti specifici." position="right" />
                 </div>
                 <p className="cleaning-hero-page-subtitle">Organizzazione e compiti per una casa splendente</p>
+                {!isMobile && (
+                  <div className="cleaning-hero-actions">
+                    <button className="tag-settings-trigger" onClick={() => setShowTagSettings(true)}>
+                      <span className="trigger-text">Coinquilini</span>
+                      <div className="trigger-icon-wrapper">
+                        <Settings size={20} />
+                      </div>
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="cleaning-hero-graphic">
@@ -204,6 +264,14 @@ export function CleaningSection({
                   </div>
                 );
               })()}
+              {!isMobile && (
+                <button className="tag-settings-trigger cleaning-tag-settings-inline" onClick={() => setShowTagSettings(true)}>
+                  <span className="trigger-text">Personalizza targhette</span>
+                  <div className="trigger-icon-wrapper">
+                    <Users size={18} />
+                  </div>
+                </button>
+              )}
             </header>
 
             <div className="room-detail-body">
@@ -242,9 +310,11 @@ export function CleaningSection({
                     .filter(t => t.roomId === selectedRoom)
                     .sort((a, b) => a.createdAt - b.createdAt)
                     .map(task => {
-                      const latestLog = cleaningLogs
-                        .filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
-                        .sort((a, b) => b.timestamp - a.timestamp)[0] || null;
+                      const taskLogs = sortLogs(
+                        cleaningLogs.filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
+                      );
+                      const latestLog = taskLogs[0] || null;
+                      const latestPerformer = latestLog ? getLogPerformer(latestLog) : null;
                       const { progress, color, daysRemaining } = getTaskUrgency(latestLog?.date || '', task.taskName, now);
                       const isOverdue = progress >= 100;
 
@@ -254,25 +324,25 @@ export function CleaningSection({
                             <div className="task-card-name-group">
                               <span className="task-card-name">{task.taskName}</span>
                               {latestLog && (
-                                <span className="task-card-last-done">
-                                  eseguito il {format(parseISO(latestLog.date), 'dd/MM/yyyy')}
-                                </span>
+                                <div className="task-card-last-meta">
+                                  <span className="task-card-last-done">
+                                    eseguito il {format(parseISO(latestLog.date), 'dd/MM/yyyy')}
+                                  </span>
+                                  {latestPerformer && (
+                                    <span className="task-last-performer-badge" style={{ backgroundColor: latestPerformer.color }}>
+                                      {latestPerformer.label}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                             </div>
                             <div className="task-card-actions">
                               <button
-                                className={`task-action-btn ${datePickerTaskId === task.id ? 'task-action-active' : ''}`}
-                                title="Registra in una data diversa"
-                                onClick={() => {
-                                  if (datePickerTaskId === task.id) {
-                                    setDatePickerTaskId(null);
-                                  } else {
-                                    setDatePickerTaskId(task.id);
-                                    setCustomDate(format(new Date(), 'yyyy-MM-dd'));
-                                  }
-                                }}
+                                className="task-action-btn"
+                                title="Gestisci completamenti"
+                                onClick={() => openTaskManager(task, latestLog)}
                               >
-                                <CalendarIcon size={14} />
+                                <History size={14} />
                               </button>
                               <button
                                 className="task-action-btn"
@@ -313,31 +383,6 @@ export function CleaningSection({
                             </div>
                           </div>
 
-                          {/* Inline date picker */}
-                          {datePickerTaskId === task.id && (
-                            <div className="task-date-picker">
-                              <input
-                                type="date"
-                                className="task-date-input"
-                                value={customDate}
-                                max={format(new Date(), 'yyyy-MM-dd')}
-                                onChange={e => setCustomDate(e.target.value)}
-                              />
-                              <button
-                                className="task-date-confirm-btn"
-                                onClick={() => {
-                                  handleCompleteTask(task.roomId, task.taskName, customDate);
-                                  setDatePickerTaskId(null);
-                                }}
-                              >
-                                <Check size={14} /> Conferma
-                              </button>
-                              <button className="task-date-cancel-btn" onClick={() => setDatePickerTaskId(null)}>
-                                <X size={14} />
-                              </button>
-                            </div>
-                          )}
-
                           {latestLog ? (
                             <div className="urgency-container">
                               <div className="urgency-bar-wrapper">
@@ -358,11 +403,24 @@ export function CleaningSection({
                             <p className="task-never-done">Mai eseguito — clicca per registrarlo oggi</p>
                           )}
 
+                          <div className="task-card-meta-row">
+                            {latestLog ? (
+                              <span className="task-card-last-summary">
+                                Ultimo: {latestPerformer?.label || 'N/D'} • {format(parseISO(latestLog.date), 'dd/MM/yyyy')}
+                              </span>
+                            ) : (
+                              <span className="task-card-last-summary">Nessun completamento registrato</span>
+                            )}
+                            {taskLogs.length > 0 && (
+                              <span className="task-card-log-count">{taskLogs.length} registrazioni</span>
+                            )}
+                          </div>
+
                           <button
                             className={`complete-task-btn ${isOverdue ? 'complete-task-btn-urgent' : ''}`}
-                            onClick={() => handleCompleteTask(task.roomId, task.taskName)}
+                            onClick={() => openTaskManager(task, latestLog)}
                           >
-                            <Check size={14} /> {isOverdue ? 'Fatto! Azzera il timer' : 'Segna come fatto oggi'}
+                            <CalendarIcon size={14} /> {isOverdue ? 'Registra completamento' : 'Gestisci mansione'}
                           </button>
                         </div>
                       );
@@ -438,6 +496,154 @@ export function CleaningSection({
         </div>
       )}
 
+      {showTagSettings && (
+        <TagManagerModal
+          tags={tags}
+          onAddTag={onAddTag}
+          onDeleteTag={onDeleteTag}
+          onClose={() => setShowTagSettings(false)}
+          hideCloseButton={isMobile}
+          closeOnOverlay={!isMobile}
+          title="Personalizzazione Targhette"
+          hint="Usa le targhette per segnare chi ha svolto ogni mansione e tenere uno storico ordinato."
+        />
+      )}
+
+      {taskManager && (
+        <div className="recipe-modal-overlay task-manager-overlay" onClick={closeTaskManager}>
+          <div className="recipe-modal-content task-manager-modal" onClick={e => e.stopPropagation()}>
+            <div className="task-manager-header">
+              <div className="task-manager-title-wrap">
+                <h3><History size={18} /> Gestisci mansione</h3>
+                <p>{taskManager.taskName}</p>
+              </div>
+              <button className="task-manager-close" onClick={closeTaskManager}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="task-manager-form">
+              <label>
+                Data completamento
+                <input
+                  type="date"
+                  value={managerDate}
+                  max={format(new Date(), 'yyyy-MM-dd')}
+                  onChange={e => setManagerDate(e.target.value)}
+                />
+              </label>
+
+              <div className="task-manager-performer">
+                <span>Chi l'ha svolta</span>
+                <div className="task-manager-tags">
+                  {tags.map(tag => (
+                    <button
+                      key={tag.id}
+                      className={`task-manager-tag ${managerPerformerId === tag.id ? 'active' : ''}`}
+                      style={{ '--tag-bg': tag.color } as React.CSSProperties}
+                      onClick={() => setManagerPerformerId(tag.id)}
+                    >
+                      {tag.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="task-manager-actions">
+                {editingLogId ? (
+                  <button
+                    className="add-task-confirm-btn task-manager-primary"
+                    onClick={async () => {
+                      await handleUpdateCleaningLog(editingLogId, managerDate, managerPerformerId || undefined);
+                      setEditingLogId(null);
+                    }}
+                  >
+                    <Check size={14} /> Salva modifica
+                  </button>
+                ) : (
+                  <button
+                    className="add-task-confirm-btn task-manager-primary"
+                    onClick={async () => {
+                      await handleCompleteTask(taskManager.roomId, taskManager.taskName, managerDate, managerPerformerId || undefined);
+                    }}
+                  >
+                    <Plus size={14} /> Registra completamento
+                  </button>
+                )}
+                {editingLogId && (
+                  <button className="add-task-cancel-btn task-manager-secondary" onClick={() => setEditingLogId(null)}>
+                    <X size={14} /> Annulla modifica
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="task-manager-history">
+              <h4>Storico mansione</h4>
+              <div className="task-manager-history-list">
+                {sortLogs(
+                  cleaningLogs.filter(
+                    log => log.roomId === taskManager.roomId && log.taskType === taskManager.taskName
+                  )
+                )
+                  .slice(0, 12)
+                  .map(log => {
+                    const performer = getLogPerformer(log);
+                    return (
+                      <div key={log.id} className="task-manager-history-item">
+                        <div className="task-manager-history-main">
+                          <span className="task-manager-history-date">{format(parseISO(log.date), 'dd/MM/yyyy')}</span>
+                          <span className="task-manager-history-dot">•</span>
+                          <span
+                            className="task-manager-history-person"
+                            style={performer ? { backgroundColor: performer.color } : undefined}
+                          >
+                            {performer?.label || 'N/D'}
+                          </span>
+                        </div>
+                        <div className="task-manager-history-actions">
+                          <button
+                            className="task-action-btn"
+                            title="Modifica"
+                            onClick={() => {
+                              setEditingLogId(log.id);
+                              setManagerDate(log.date);
+                              setManagerPerformerId(log.performedByTagId || tags[0]?.id || '');
+                            }}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          {logToDeleteId === log.id ? (
+                            <div className="delete-confirm-inline">
+                              <button
+                                className="confirm-btn-mini"
+                                onClick={async () => {
+                                  await handleDeleteCleaningLog(log.id);
+                                  setLogToDeleteId(null);
+                                  if (editingLogId === log.id) setEditingLogId(null);
+                                }}
+                              >
+                                <Check size={14} strokeWidth={3} />
+                              </button>
+                              <button className="cancel-btn-mini" onClick={() => setLogToDeleteId(null)}>
+                                <X size={14} strokeWidth={3} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button className="task-action-btn task-action-delete" title="Elimina" onClick={() => setLogToDeleteId(log.id)}>
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isMobile && !selectedRoom && (
         <>
           <div className="mobile-fab-container-left">
@@ -446,6 +652,10 @@ export function CleaningSection({
                 <button className="mobile-menu-item" onClick={() => { setShowMobileSidebar(true); setShowMoreMenu(false); }}>
                   <CalendarIcon size={20} />
                   <span>Note Pulizie</span>
+                </button>
+                <button className="mobile-menu-item" onClick={() => { setShowTagSettings(true); setShowMoreMenu(false); }}>
+                  <Users size={20} />
+                  <span>Coinquilini</span>
                 </button>
                 <button className="mobile-menu-item" onClick={() => { setShowTasksSheet(true); setShowMoreMenu(false); }}>
                   <List size={20} />
@@ -469,20 +679,23 @@ export function CleaningSection({
           </button>
 
           {showTasksSheet && (
-            <div className="management-sheet-overlay" onClick={() => setShowTasksSheet(false)}>
-              <div className="management-sheet-content" onClick={e => e.stopPropagation()}>
+            <div className="management-sheet-overlay">
+              <div
+                className="management-sheet-content"
+                onClick={e => e.stopPropagation()}
+                style={{ transform: tasksSheetTransform }}
+                {...tasksSheetHandlers}
+              >
+                <div className="bottom-sheet-drag-handle" />
                 <div className="management-sheet-header">
                   <h3><Sparkles size={24} /> Elenco Mansioni</h3>
-                  <button className="management-sheet-close" onClick={() => setShowTasksSheet(false)}>
-                    <X size={24} />
-                  </button>
                 </div>
                 <div className="management-sheet-body">
                   {(() => {
                     const activeTasks = roomTasks.filter(task => {
-                      const latestLog = cleaningLogs
-                        .filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
-                        .sort((a, b) => b.timestamp - a.timestamp)[0];
+                      const latestLog = sortLogs(
+                        cleaningLogs.filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
+                      )[0];
                       if (!latestLog) return false; // Exclude never done - show only those with history
                       const { progress } = getTaskUrgency(latestLog?.date || '', task.taskName, Date.now());
                       return progress > 0; // Show only tasks with a decay/progression
@@ -500,9 +713,9 @@ export function CleaningSection({
 
                     return activeTasks.map(task => {
                       const room = ROOMS.find(r => r.id === task.roomId);
-                      const latestLog = cleaningLogs
-                        .filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
-                        .sort((a, b) => b.timestamp - a.timestamp)[0];
+                      const latestLog = sortLogs(
+                        cleaningLogs.filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
+                      )[0];
                       const { color, progress } = getTaskUrgency(latestLog?.date || '', task.taskName, Date.now());
 
                       return (

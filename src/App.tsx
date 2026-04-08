@@ -110,8 +110,6 @@ function App() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskName, setNewTaskName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
-  const [datePickerTaskId, setDatePickerTaskId] = useState<string | null>(null);
-  const [customDate, setCustomDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [editingFrequency, setEditingFrequency] = useState<{value: number, unit: TaskUnit}>({value: 1, unit: 'settimane'});
   const [suggestions, setSuggestions] = useState<{ text: string; icon: string; category?: 'supermarket' | 'home' | 'medicine' }[]>(SUGGESTIONS as any);
   const [showNotifDeleteConfirm, setShowNotifDeleteConfirm] = useState<string | null>(null);
@@ -881,27 +879,51 @@ function App() {
       console.error("Error deleting recipe:", e);
     }
   };
-  const handleCompleteTask = async (roomId: string, taskName: string, dateStr?: string) => {
+  const handleCompleteTask = async (roomId: string, taskName: string, dateStr?: string, performedByTagId?: string) => {
     const dateKey = dateStr || format(new Date(), 'yyyy-MM-dd');
     const isCustomDate = !!dateStr && dateStr !== format(new Date(), 'yyyy-MM-dd');
     const logId = generateId();
+    const performerTag = performedByTagId ? tags.find(t => t.id === performedByTagId) : null;
     try {
       await setDoc(doc(db, colPath('cleaningLogs'), logId), {
         roomId,
         taskType: taskName,
         date: dateKey,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        ...(performedByTagId ? { performedByTagId } : {}),
+        ...(performerTag?.label ? { performedByLabel: performerTag.label } : {})
       });
       const notifId = generateId();
       await setDoc(doc(db, colPath('notifications'), notifId), {
         text: isCustomDate
-          ? `"${taskName}" registrato per il ${format(parseISO(dateKey), 'd MMMM', { locale: it })} ✅`
-          : `"${taskName}" completato oggi ✅`,
+          ? `"${taskName}" registrato per il ${format(parseISO(dateKey), 'd MMMM', { locale: it })}${performerTag?.label ? ` da ${performerTag.label}` : ''} ✅`
+          : `"${taskName}" completato oggi${performerTag?.label ? ` da ${performerTag.label}` : ''} ✅`,
         timestamp: Date.now(),
         read: false
       });
     } catch (e) {
       console.error("Error completing task:", e);
+    }
+  };
+
+  const handleUpdateCleaningLog = async (logId: string, dateStr: string, performedByTagId?: string) => {
+    const performerTag = performedByTagId ? tags.find(t => t.id === performedByTagId) : null;
+    try {
+      await updateDoc(doc(db, colPath('cleaningLogs'), logId), {
+        date: dateStr,
+        performedByTagId: performedByTagId || null,
+        performedByLabel: performerTag?.label || null
+      });
+    } catch (e) {
+      console.error("Error updating cleaning log:", e);
+    }
+  };
+
+  const handleDeleteCleaningLog = async (logId: string) => {
+    try {
+      await deleteDoc(doc(db, colPath('cleaningLogs'), logId));
+    } catch (e) {
+      console.error("Error deleting cleaning log:", e);
     }
   };
 
@@ -1064,10 +1086,19 @@ function App() {
     }
   };
 
-  const handleAddEvent = async (event: Omit<CalendarEvent, 'id'>) => {
+  const handleAddEvent = async (event: Omit<CalendarEvent, 'id'>): Promise<boolean> => {
+    const buildPayload = (ev: CalendarEvent) =>
+      Object.fromEntries(Object.entries(ev).filter(([, value]) => value !== undefined));
+
     try {
       const id = generateId();
-      await setDoc(doc(db, colPath('events'), id), { ...event, id });
+      const newEvent: CalendarEvent = { ...event, id };
+
+      await setDoc(doc(db, colPath('events'), id), buildPayload(newEvent));
+      setEvents(prev => {
+        const withoutDup = prev.filter(e => e.id !== id);
+        return [...withoutDup, newEvent];
+      });
       
       const notifId = generateId();
       await setDoc(doc(db, colPath('notifications'), notifId), {
@@ -1075,8 +1106,40 @@ function App() {
         timestamp: Date.now(),
         read: false
       });
+      return true;
     } catch (e) {
+      // Some backends/rulesets may reject optional extra fields (e.g. endTime).
+      // Fallback to a compact time range in startTime so users can still save events.
+      if (event.endTime && event.startTime) {
+        try {
+          const id = generateId();
+          const fallbackEvent: CalendarEvent = {
+            ...event,
+            id,
+            startTime: `${event.startTime} - ${event.endTime}`,
+            endTime: undefined
+          };
+          await setDoc(doc(db, colPath('events'), id), buildPayload(fallbackEvent));
+          setEvents(prev => {
+            const withoutDup = prev.filter(ev => ev.id !== id);
+            return [...withoutDup, fallbackEvent];
+          });
+
+          const notifId = generateId();
+          await setDoc(doc(db, colPath('notifications'), notifId), {
+            text: `Nuovo evento: "${event.text}" 📅`,
+            timestamp: Date.now(),
+            read: false
+          });
+          return true;
+        } catch (fallbackErr) {
+          console.error("Error adding event (fallback failed):", fallbackErr);
+          return false;
+        }
+      }
+
       console.error("Error adding event:", e);
+      return false;
     }
   };
 
@@ -1128,7 +1191,7 @@ function App() {
 
   if (isAuthLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-50 skeleton-box" style={{ width: '100vw', height: '100vh', borderRadius: 0 }}>
+      <div className="full-screen-skeleton skeleton-box">
       </div>
     );
   }
@@ -1148,23 +1211,21 @@ function App() {
         <header className={`mobile-header ${isScrolled ? 'is-scrolled' : ''}`}>
           <div className="mobile-header-left">
             <div 
-              className="nav-icon-wrapper" 
-              style={{ cursor: 'pointer' }}
+              className="nav-icon-wrapper nav-icon-button"
               onClick={() => setActiveTab('home')}
             >
-              {profileAvatar ? (
-                <img src={profileAvatar} alt="Profile" className="nav-icon-hover" style={{ opacity: 1, transform: 'scale(1)', position: 'static' }} />
-              ) : (
-                <Home className="nav-icon-main" size={24} />
-              )}
+              <img
+                src={profileAvatar || 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=200&h=200'}
+                alt="Profile"
+                className="nav-icon-hover nav-icon-hover-static"
+              />
             </div>
             <h2 className="mobile-header-title">{activeTab.toUpperCase()}</h2>
           </div>
-          <div className="mobile-header-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="mobile-header-right">
              <button
-                className="notif-btn" 
+                className={`notif-btn settings-shortcut-btn ${activeTab === 'settings' ? 'is-active' : ''}`}
                 onClick={() => setActiveTab(activeTab === 'settings' ? 'home' : 'settings')}
-                style={{ color: activeTab === 'settings' ? '#4f46e5' : '#4a5568' }}
               >
                 <Settings size={22} strokeWidth={2.5} />
               </button>
@@ -1333,7 +1394,7 @@ function App() {
                       setShowProfileDropdown(false);
                     }}
                   >
-                    <UserIcon size={18} style={{ marginRight: '8px', color: '#4a5568' }} />
+                    <UserIcon size={18} className="profile-option-icon" />
                     <span className="profile-name">Gestione Account</span>
                   </button>
                   <button 
@@ -1343,7 +1404,7 @@ function App() {
                       setShowProfileDropdown(false);
                     }}
                   >
-                    <span className="profile-name" style={{ color: '#e53e3e', fontWeight: 600 }}>Effettua il Logout</span>
+                    <span className="profile-name profile-name-danger">Effettua il Logout</span>
                   </button>
                 </div>
               )}
@@ -1417,7 +1478,7 @@ function App() {
                             onClick={() => setShowDeleteAllConfirm(true)}
                             disabled={notifications.length === 0}
                           >
-                            <Trash2 size={12} style={{marginRight: '4px'}} />
+                            <Trash2 size={12} className="notif-action-icon" />
                             Elimina tutte
                           </button>
                         )}
@@ -1490,7 +1551,7 @@ function App() {
       )}
 
       <div className={`layout ${isMobile ? 'is-mobile' : ''}`}>
-        <div key={activeTab} className={`layout-content ${isMobile ? `mobile-page-transition-${slideDirection}` : ''}`}>
+        <div className={`layout-content ${isMobile ? `mobile-page-transition-${slideDirection}` : ''}`}>
           {isDataLoading ? (
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div className="skeleton-box" style={{ width: '40%', height: '40px' }} />
@@ -1626,11 +1687,9 @@ function App() {
             roomTasks={roomTasks}
             cleaningLogs={cleaningLogs}
             handleDeleteRoomTask={handleDeleteRoomTask}
-            datePickerTaskId={datePickerTaskId}
-            setDatePickerTaskId={setDatePickerTaskId}
-            customDate={customDate}
-            setCustomDate={setCustomDate}
             handleCompleteTask={handleCompleteTask}
+            handleUpdateCleaningLog={handleUpdateCleaningLog}
+            handleDeleteCleaningLog={handleDeleteCleaningLog}
             taskSettings={taskSettings}
             showTaskSettings={showTaskSettings}
             setShowTaskSettings={setShowTaskSettings}
@@ -1638,6 +1697,9 @@ function App() {
             setEditingFrequency={setEditingFrequency}
             handleUpdateTaskFrequency={handleUpdateTaskFrequency}
             isMobile={isMobile}
+            tags={tags}
+            onAddTag={handleAddTag}
+            onDeleteTag={handleDeleteTag}
           />
         )}
         {activeTab === 'finance' && (
