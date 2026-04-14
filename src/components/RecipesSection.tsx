@@ -4,6 +4,7 @@ import type { Recipe, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import { useInViewport } from '../hooks/useInViewport';
 import cookbookImg from '../assets/cookbook-3d-cutout.png';
 import './RecipesSection.css';
 
@@ -50,6 +51,7 @@ export function RecipesSection({
   const [showTagSettings, setShowTagSettings] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showRecipesSheet, setShowRecipesSheet] = useState(false);
+  const { ref: heroGraphicRef, isInView: isHeroGraphicInView } = useInViewport<HTMLDivElement>();
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
   const [swipingId, setSwipingId] = useState<string | null>(null);
@@ -120,9 +122,16 @@ export function RecipesSection({
               )}
             </div>
 
-            <div className="recipes-hero-graphic">
+            <div ref={heroGraphicRef} className={`recipes-hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
               <div className="floating-book-wrapper">
-                <img src={cookbookImg} alt="Cookbook" className="floating-book" />
+                <img
+                  src={cookbookImg}
+                  alt="Cookbook"
+                  className="floating-book"
+                  width={1024}
+                  height={1024}
+                  decoding="async"
+                />
                 <div className="book-shadow"></div>
               </div>
             </div>
@@ -132,7 +141,7 @@ export function RecipesSection({
             {recipes.map(recipe => (
               <div key={recipe.id} className="recipe-card" onClick={() => handleRecipeClick(recipe)}>
                 <div className="recipe-image-wrapper">
-                  <img src={recipe.image} alt={recipe.title} className="recipe-image" />
+                  <img src={recipe.image} alt={recipe.title} className="recipe-image" loading="lazy" decoding="async" />
                   {!isMobile && (
                     <div className="recipe-overlay">
                       <Plus size={24} color="white" />
@@ -291,7 +300,7 @@ export function RecipesSection({
                 <div className={`modal-image-section ${isEditingRecipe ? 'editing-image' : ''}`}
                   onClick={() => isEditingRecipe && document.getElementById('recipe-image-input')?.click()}
                 >
-                  <img src={isEditingRecipe ? tempRecipe?.image : selectedRecipe.image} alt={selectedRecipe.title} />
+                  <img src={isEditingRecipe ? tempRecipe?.image : selectedRecipe.image} alt={selectedRecipe.title} decoding="async" />
                   <div className="modal-image-overlay">
                     {isEditingRecipe ? (
                       <div className="edit-image-prompt">

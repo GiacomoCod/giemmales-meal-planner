@@ -3,6 +3,7 @@ import { Plus, Check, Trash2, X, Store, Home, Search, Sparkles, ShoppingBag, Pil
 import type { ShoppingItem } from '../types';
 import shoppingCartImg from '../assets/shopping-cart-3d-cutout.png';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import { useInViewport } from '../hooks/useInViewport';
 import './ShoppingListSection.css';
 
 interface ShoppingListSectionProps {
@@ -41,6 +42,7 @@ export function ShoppingListSection({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showSuggestionSettings, setShowSuggestionSettings] = useState(false);
+  const { ref: heroGraphicRef, isInView: isHeroGraphicInView } = useInViewport<HTMLDivElement>();
   
   const { transform: sugSheetTransform, handlers: sugSheetHandlers } = useSwipeToDismiss(() => {
     setShowSuggestionSettings(false);
@@ -140,9 +142,16 @@ export function ShoppingListSection({
             <p className="shopping-hero-page-subtitle">Organizza i tuoi acquisti per la casa e la cucina.</p>
           </div>
           
-          <div className="shopping-hero-graphic">
+          <div ref={heroGraphicRef} className={`shopping-hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
             <div className="floating-cart-wrapper">
-              <img src={shoppingCartImg} alt="3D Shopping Cart" className="floating-cart" />
+              <img
+                src={shoppingCartImg}
+                alt="3D Shopping Cart"
+                className="floating-cart"
+                width={1024}
+                height={1024}
+                decoding="async"
+              />
               <div className="cart-shadow"></div>
             </div>
           </div>

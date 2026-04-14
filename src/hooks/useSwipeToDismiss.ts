@@ -18,6 +18,8 @@ export function useSwipeToDismiss(
 ): SwipeToDismissResult {
   const [translateY, setTranslateY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const translateYRef = useRef(0);
+  const rafIdRef = useRef<number | null>(null);
   
   // Lock background body scroll ONLY while the bottom sheet is active
   useEffect(() => {
@@ -44,6 +46,16 @@ export function useSwipeToDismiss(
   const startY = useRef<number | null>(null);
   const currentY = useRef<number>(0);
 
+  const scheduleTranslateY = useCallback((nextValue: number) => {
+    translateYRef.current = nextValue;
+    if (rafIdRef.current !== null) return;
+
+    rafIdRef.current = window.requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      setTranslateY(translateYRef.current);
+    });
+  }, []);
+
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     // Only track single touches
     if (e.touches.length !== 1) return;
@@ -62,13 +74,13 @@ export function useSwipeToDismiss(
     // We only want to drag DOWNwards (val > 0). If dragY < 0 it means pulling up.
     if (dragY > 0) {
       // Small resistance for natural feel (optional)
-      setTranslateY(dragY);
+      scheduleTranslateY(dragY);
       currentY.current = dragY;
     } else {
-      setTranslateY(0);
+      scheduleTranslateY(0);
       currentY.current = 0;
     }
-  }, [isDragging]);
+  }, [isDragging, scheduleTranslateY]);
 
   const onTouchEnd = useCallback(() => {
     if (!isDragging) return;
@@ -77,28 +89,36 @@ export function useSwipeToDismiss(
     const shouldDismiss = currentY.current > threshold;
 
     // Always snap state back first to avoid "overlay visible but sheet offscreen" races.
-    setTranslateY(0);
+    scheduleTranslateY(0);
     startY.current = null;
     currentY.current = 0;
 
     if (shouldDismiss) {
       onDismiss();
     }
-  }, [isDragging, threshold, onDismiss]);
+  }, [isDragging, threshold, onDismiss, scheduleTranslateY]);
 
   const onTouchCancel = useCallback(() => {
     setIsDragging(false);
-    setTranslateY(0);
+    scheduleTranslateY(0);
     startY.current = null;
     currentY.current = 0;
-  }, []);
+  }, [scheduleTranslateY]);
 
   // Extra safeguard: if translate remains > 0 while active and not dragging, snap it back.
   useEffect(() => {
     if (!isActive || isDragging || translateY <= 0) return;
-    const t = window.setTimeout(() => setTranslateY(0), 80);
+    const t = window.setTimeout(() => scheduleTranslateY(0), 80);
     return () => window.clearTimeout(t);
-  }, [isActive, isDragging, translateY]);
+  }, [isActive, isDragging, translateY, scheduleTranslateY]);
+
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
 
   return {
     transform: `translateY(${translateY}px)`,

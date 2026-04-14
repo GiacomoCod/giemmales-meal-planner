@@ -11,11 +11,11 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'VibesPlanning',
-        short_name: 'Vibes',
+        name: 'Home Planner',
+        short_name: 'Planner',
         description: 'Gestione pasti, pulizie e finanze della tua casa.',
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        theme_color: '#f8fafc',
+        background_color: '#f8fafc',
         display: 'standalone',
         start_url: '/',
         scope: '/',
@@ -44,4 +44,17 @@ export default defineConfig({
   server: {
     host: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('firebase')) return 'vendor-firebase';
+          if (id.includes('date-fns')) return 'vendor-date';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+          if (id.includes('react')) return 'vendor-react';
+        }
+      }
+    }
+  }
 })

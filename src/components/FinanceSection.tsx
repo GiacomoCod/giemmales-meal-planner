@@ -10,6 +10,7 @@ import type { Expense, ExpenseCategory, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import { useInViewport } from '../hooks/useInViewport';
 import financeImg from '../assets/finance-3d-cutout.png';
 import './FinanceSection.css';
 
@@ -143,6 +144,7 @@ export function FinanceSection({
   const [showMobileAddForm, setShowMobileAddForm] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showExpensesSheet, setShowExpensesSheet] = useState(false);
+  const { ref: heroGraphicRef, isInView: isHeroGraphicInView } = useInViewport<HTMLDivElement>();
   const { transform: expensesSheetTransform, handlers: expensesSheetHandlers } = useSwipeToDismiss(() => {
     setShowExpensesSheet(false);
     setShowMoreMenu(false);
@@ -333,7 +335,7 @@ export function FinanceSection({
             )}
           </div>
 
-          <div className="finance-hero-graphic">
+          <div ref={heroGraphicRef} className={`finance-hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
             <div className="finance-coins-container">
               <div className="finance-coin" style={{ '--size': '40px', '--left': '10%', '--top': '20%', '--delay': '0s', '--duration': '4s', '--drift': '20px' } as any}></div>
               <div className="finance-coin" style={{ '--size': '30px', '--left': '80%', '--top': '15%', '--delay': '1s', '--duration': '5s', '--drift': '-15px' } as any}></div>
@@ -341,7 +343,14 @@ export function FinanceSection({
               <div className="finance-coin" style={{ '--size': '25px', '--left': '65%', '--top': '60%', '--delay': '1.5s', '--duration': '6s', '--drift': '-12px' } as any}></div>
             </div>
             <div className="floating-piggy-wrapper">
-              <img src={financeImg} alt="Finance Piggy" className="floating-piggy" />
+              <img
+                src={financeImg}
+                alt="Finance Piggy"
+                className="floating-piggy"
+                width={1024}
+                height={1024}
+                decoding="async"
+              />
               <div className="piggy-shadow"></div>
             </div>
           </div>

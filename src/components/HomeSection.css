@@ -128,6 +128,8 @@
     flex-direction: column-reverse;
     text-align: center;
     gap: 20px;
+    padding: 20px 0;
+    margin-bottom: 20px;
   }
   .hero-text {
     width: 100%;
@@ -137,6 +139,7 @@
   }
   .hero-subtitle {
     margin: 15px auto 0;
+    max-width: 400px;
   }
   .floating-house-wrapper {
     width: 240px;
@@ -156,7 +159,7 @@
   border-radius: 28px;
   padding: 24px;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.32s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.32s ease, border-color 0.24s ease;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -172,7 +175,8 @@
 
 .home-card.glass {
   background: var(--surface-color);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border-color);
 }
@@ -212,6 +216,12 @@
   margin-bottom: 24px;
 }
 
+.house-calendar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .header-left {
   display: flex;
   align-items: center;
@@ -226,6 +236,19 @@
   gap: 12px;
   min-width: 0;
   overflow: hidden;
+}
+
+.calendar-compact-meta {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .calendar-nav-arrows {
@@ -290,6 +313,21 @@
   transform: translateY(-1px);
 }
 
+.calendar-toggle-btn {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.calendar-toggle-btn:hover {
+  background: var(--surface-hover);
+}
+
 .add-event-btn {
   display: flex;
   align-items: center;
@@ -318,6 +356,11 @@
   min-height: 220px;
 }
 
+.house-calendar-grid.is-compact-mobile {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: auto;
+}
+
 .calendar-day-col {
   display: flex;
   flex-direction: column;
@@ -328,6 +371,10 @@
   border: 1px solid var(--border-color);
   min-height: 280px;
   min-width: 150px;
+}
+
+.house-calendar-card.is-mobile-compact .calendar-day-col {
+  min-height: 180px;
 }
 
 /* Scrollable calendar on mobile */
@@ -935,8 +982,12 @@
     align-items: flex-start;
     gap: 12px;
   }
-  .add-event-btn {
+  .house-calendar-actions {
     width: 100%;
+  }
+  .calendar-toggle-btn,
+  .add-event-btn {
+    flex: 1;
     justify-content: center;
   }
   .header-title-nav {
@@ -949,10 +1000,17 @@
     grid-template-columns: repeat(7, 120px);
     gap: 8px;
   }
+  .house-calendar-grid.is-compact-mobile {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .calendar-day-col {
     min-height: 200px;
     min-width: unset;
     padding: 12px 8px;
+  }
+  .house-calendar-card.is-mobile-compact .calendar-day-col {
+    min-height: 156px;
+    padding: 10px 8px;
   }
   .house-calendar-card {
     padding: 20px 16px;
@@ -989,6 +1047,9 @@
   .card-title {
     font-size: 1.1rem;
   }
+  .calendar-compact-meta {
+    font-size: 0.7rem;
+  }
   .calendar-nav-arrows {
     padding: 4px 8px;
     gap: 8px;
@@ -998,10 +1059,15 @@
     min-width: unset;
   }
   /* "Nuovo Evento" button: compact on mobile */
+  .house-calendar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .calendar-toggle-btn,
   .add-event-btn {
     width: 100%;
     justify-content: center;
-    padding: 10px 16px;
+    padding: 10px 14px;
   }
   /* Horizontal scroll for calendar */
   .house-calendar-grid {
@@ -1024,6 +1090,12 @@
   .event-text { font-size: 0.75rem; }
   .event-time { font-size: 0.62rem; }
   .calendar-task-item { font-size: 0.68rem; padding: 6px 7px; }
+  .house-calendar-grid.is-compact-mobile {
+    grid-template-columns: 1fr;
+  }
+  .house-calendar-card.is-mobile-compact .calendar-day-col {
+    min-height: 132px;
+  }
 
   /* Home card general mobile tweaks */
   .home-card {

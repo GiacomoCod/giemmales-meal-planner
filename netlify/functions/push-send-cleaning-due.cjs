@@ -43,6 +43,12 @@ const formatDateKey = (dateObj) => dateObj.toISOString().slice(0, 10);
 
 const addDaysUtc = (dateObj, days) => new Date(dateObj.getTime() + days * 24 * 60 * 60 * 1000);
 
+const sanitizeTaskName = (taskName) => String(taskName || '').trim().replace(/\s+/g, ' ');
+
+const normalizeTaskName = (taskName) => sanitizeTaskName(taskName).toLocaleLowerCase('it-IT');
+
+const buildRoomTaskKey = (roomId, taskName) => `${roomId}::${normalizeTaskName(taskName)}`;
+
 const getDateKeyInTimeZone = (dateObj, timeZone) =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -56,6 +62,37 @@ const findLatestLog = (logs) =>
     if (a.date !== b.date) return b.date.localeCompare(a.date);
     return (b.timestamp || 0) - (a.timestamp || 0);
   })[0] || null;
+
+const dedupeRoomTasks = (tasks) => {
+  const uniqueTasks = new Map();
+
+  [...tasks]
+    .sort((a, b) => {
+      const createdAtDelta = (a.createdAt || 0) - (b.createdAt || 0);
+      if (createdAtDelta !== 0) return createdAtDelta;
+
+      const taskNameDelta = String(a.taskName || '').localeCompare(String(b.taskName || ''), 'it');
+      if (taskNameDelta !== 0) return taskNameDelta;
+
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    })
+    .forEach((task) => {
+      const key = buildRoomTaskKey(task.roomId, task.taskName);
+      if (!uniqueTasks.has(key)) {
+        uniqueTasks.set(key, {
+          ...task,
+          taskName: sanitizeTaskName(task.taskName)
+        });
+      }
+    });
+
+  return [...uniqueTasks.values()];
+};
+
+const getTaskSetting = (taskSettings, taskName) =>
+  taskSettings[taskName] ||
+  Object.entries(taskSettings).find(([currentTaskName]) => normalizeTaskName(currentTaskName) === normalizeTaskName(taskName))?.[1] ||
+  { value: 1, unit: 'settimane' };
 
 const lcFirst = (value) => {
   const text = String(value || '').trim();
@@ -184,7 +221,7 @@ exports.handler = async (event) => {
       firestore.collection(getCollectionPath(profileId, 'taskSettings')).limit(500).get()
     ]);
 
-    const roomTasks = tasksSnapshot.docs.map((doc) => doc.data());
+    const roomTasks = dedupeRoomTasks(tasksSnapshot.docs.map((doc) => doc.data()));
     const cleaningLogs = logsSnapshot.docs.map((doc) => doc.data());
     const taskSettings = Object.fromEntries(settingsSnapshot.docs.map((doc) => [doc.id, doc.data()]));
 
@@ -192,11 +229,13 @@ exports.handler = async (event) => {
     for (const task of roomTasks) {
       const taskName = task.taskName;
       const roomId = task.roomId;
-      const logsForTask = cleaningLogs.filter((log) => log.roomId === roomId && log.taskType === taskName);
+      const logsForTask = cleaningLogs.filter(
+        (log) => buildRoomTaskKey(log.roomId, log.taskType) === buildRoomTaskKey(roomId, taskName)
+      );
       const latestLog = findLatestLog(logsForTask);
       if (!latestLog || !latestLog.date) continue;
 
-      const setting = taskSettings[taskName] || { value: 1, unit: 'settimane' };
+      const setting = getTaskSetting(taskSettings, taskName);
       const intervalDays = unitToDays(setting.value, setting.unit);
       const nextDueDate = addDaysUtc(parseDateKey(latestLog.date), intervalDays);
       const nextDueKey = formatDateKey(nextDueDate);

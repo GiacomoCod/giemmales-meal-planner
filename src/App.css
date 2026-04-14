@@ -201,7 +201,8 @@ body {
 
 .top-nav {
   background-color: var(--glass-surface);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   padding: 1rem 2rem;
   box-shadow: var(--shadow-sm);
   border-bottom: 1px solid var(--glass-border);
@@ -215,7 +216,8 @@ body {
 
 .mobile-header {
   background-color: var(--glass-surface);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   /* Extra space for notch/status bar */
   padding: calc(1rem + env(safe-area-inset-top)) 1.5rem 1rem 1.5rem; 
   display: flex;
@@ -232,8 +234,8 @@ body {
 
 .shopping-hero {
   background: var(--surface-color);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border-radius: 24px;
   padding: 30px 40px;
   margin-top: 20px; /* Space from navbar */
@@ -251,6 +253,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .mobile-header-right {
@@ -294,8 +297,11 @@ body {
   font-size: 1.1rem;
   font-weight: 800;
   margin: 0;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.01em;
   color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mobile-notif-overlay {
@@ -305,7 +311,8 @@ body {
   width: 100%;
   height: 100%;
   background: var(--surface-color);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   z-index: 5000;
   display: flex;
   flex-direction: column;
@@ -340,6 +347,71 @@ body {
 .mobile-page-transition-right {
   animation: slideFadeInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   width: 100%;
+}
+
+.motion-target {
+  contain: layout paint;
+}
+
+.motion-target .floating-house,
+.motion-target .floating-burger,
+.motion-target .floating-cart,
+.motion-target .floating-book,
+.motion-target .floating-piggy,
+.motion-target .floating-kit,
+.motion-target .house-shadow,
+.motion-target .burger-shadow,
+.motion-target .cart-shadow,
+.motion-target .book-shadow,
+.motion-target .piggy-shadow,
+.motion-target .kit-shadow,
+.motion-target .finance-coin,
+.motion-target .cleaning-bubble {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.motion-target.is-idle .floating-house,
+.motion-target.is-idle .floating-burger,
+.motion-target.is-idle .floating-cart,
+.motion-target.is-idle .floating-book,
+.motion-target.is-idle .floating-piggy,
+.motion-target.is-idle .floating-kit,
+.motion-target.is-idle .house-shadow,
+.motion-target.is-idle .burger-shadow,
+.motion-target.is-idle .cart-shadow,
+.motion-target.is-idle .book-shadow,
+.motion-target.is-idle .piggy-shadow,
+.motion-target.is-idle .kit-shadow,
+.motion-target.is-idle .finance-coin,
+.motion-target.is-idle .cleaning-bubble {
+  animation-play-state: paused !important;
+}
+
+.motion-target.is-idle .finance-coin,
+.motion-target.is-idle .cleaning-bubble {
+  opacity: 0.14;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-target .floating-house,
+  .motion-target .floating-burger,
+  .motion-target .floating-cart,
+  .motion-target .floating-book,
+  .motion-target .floating-piggy,
+  .motion-target .floating-kit,
+  .motion-target .house-shadow,
+  .motion-target .burger-shadow,
+  .motion-target .cart-shadow,
+  .motion-target .book-shadow,
+  .motion-target .piggy-shadow,
+  .motion-target .kit-shadow,
+  .motion-target .finance-coin,
+  .motion-target .cleaning-bubble {
+    animation: none !important;
+    transform: none !important;
+  }
 }
 
 .mobile-notif-header {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Suspense, lazy, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, Sparkles, Home, ChevronDown, User as UserIcon, Check, X, Wallet, Settings } from 'lucide-react';
 
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths } from 'date-fns';
@@ -12,16 +12,91 @@ import './App.css';
 
 import { SUGGESTIONS, DEFAULT_ROOM_TASKS, DUMMY_RECIPES } from './constants';
 import type { MealEntry, MealPlan, Recipe, CleaningLog, RoomTask, TaskUnit, TaskSettings, ShoppingItem, NotificationItem, Tag, CalendarEvent, Expense } from './types';
-import { PlannerSection } from './components/PlannerSection';
-import { ShoppingListSection } from './components/ShoppingListSection';
-import { RecipesSection } from './components/RecipesSection';
-import { CleaningSection } from './components/CleaningSection';
-import { SettingsSection } from './components/SettingsSection';
-import { HomeSection } from './components/HomeSection';
-import { FinanceSection } from './components/FinanceSection';
-import { Login } from './components/Login';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { BottomNavigation } from './components/BottomNavigation';
+import { PerformanceHUD } from './components/PerformanceHUD';
+import { buildRoomTaskKey, dedupeRoomTasks, hasRoomTask, sanitizeTaskName } from './utils/cleaningTasks';
+
+type AppTab = 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings';
+
+const TAB_LABELS: Record<AppTab, string> = {
+  home: 'Home',
+  planner: 'Menù',
+  shopping: 'Spesa',
+  recipes: 'Ricette',
+  cleaning: 'Pulizie',
+  finance: 'Finanze',
+  settings: 'Impostazioni'
+};
+
+const loadHomeSection = () => import('./components/HomeSection');
+const loadPlannerSection = () => import('./components/PlannerSection');
+const loadShoppingSection = () => import('./components/ShoppingListSection');
+const loadRecipesSection = () => import('./components/RecipesSection');
+const loadCleaningSection = () => import('./components/CleaningSection');
+const loadFinanceSection = () => import('./components/FinanceSection');
+const loadSettingsSection = () => import('./components/SettingsSection');
+const loadLogin = () => import('./components/Login');
+
+const HomeSection = lazy(async () => {
+  const module = await loadHomeSection();
+  return { default: module.HomeSection };
+});
+
+const PlannerSection = lazy(async () => {
+  const module = await loadPlannerSection();
+  return { default: module.PlannerSection };
+});
+
+const ShoppingListSection = lazy(async () => {
+  const module = await loadShoppingSection();
+  return { default: module.ShoppingListSection };
+});
+
+const RecipesSection = lazy(async () => {
+  const module = await loadRecipesSection();
+  return { default: module.RecipesSection };
+});
+
+const CleaningSection = lazy(async () => {
+  const module = await loadCleaningSection();
+  return { default: module.CleaningSection };
+});
+
+const FinanceSection = lazy(async () => {
+  const module = await loadFinanceSection();
+  return { default: module.FinanceSection };
+});
+
+const SettingsSection = lazy(async () => {
+  const module = await loadSettingsSection();
+  return { default: module.SettingsSection };
+});
+
+const Login = lazy(async () => {
+  const module = await loadLogin();
+  return { default: module.Login };
+});
+
+const SECTION_PRELOADERS: Record<AppTab, () => Promise<unknown>> = {
+  home: loadHomeSection,
+  planner: loadPlannerSection,
+  shopping: loadShoppingSection,
+  recipes: loadRecipesSection,
+  cleaning: loadCleaningSection,
+  finance: loadFinanceSection,
+  settings: loadSettingsSection
+};
+
+function SectionFallback() {
+  return (
+    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div className="skeleton-box" style={{ width: '40%', height: '40px' }} />
+      <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '24px' }} />
+      <div className="skeleton-box" style={{ width: '100%', height: '300px', borderRadius: '24px' }} />
+    </div>
+  );
+}
 
 function App() {
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -71,14 +146,21 @@ function App() {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeTab, setActiveTabState] = useState<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings'>('home');
+  const [activeTab, setActiveTabState] = useState<AppTab>('home');
   const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('left');
 
-  const setActiveTab = useCallback((newTab: 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings', explicitDirection?: 'left' | 'right') => {
+  const preloadSection = useCallback((tab: AppTab) => {
+    void SECTION_PRELOADERS[tab]();
+  }, []);
+
+  const getTabLabel = useCallback((tab: AppTab) => TAB_LABELS[tab], []);
+
+  const setActiveTab = useCallback((newTab: AppTab, explicitDirection?: 'left' | 'right') => {
+    preloadSection(newTab);
     if (explicitDirection) {
       setSlideDirection(explicitDirection);
     } else {
-      const allTabs = ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
+      const allTabs: AppTab[] = ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
       const prevIndex = allTabs.indexOf(activeTab);
       const newIndex = allTabs.indexOf(newTab);
       if (newIndex > prevIndex) {
@@ -88,7 +170,7 @@ function App() {
       }
     }
     setActiveTabState(newTab);
-  }, [activeTab]);
+  }, [activeTab, preloadSection]);
   const [visibleSections, setVisibleSections] = useState<Record<string, boolean>>({
     planner: true,
     shopping: true,
@@ -122,6 +204,53 @@ function App() {
   const [isDeletingAllInProgress, setIsDeletingAllInProgress] = useState(false);
   const undoTimeoutRef = useRef<any>(null);
   const hasSeededRef = useRef<Set<string>>(new Set());
+  const uniqueRoomTasks = useMemo(() => dedupeRoomTasks(roomTasks), [roomTasks]);
+
+  const preferredPrefetchTabs = useMemo(() => {
+    const candidateMap: Record<AppTab, AppTab[]> = {
+      home: ['planner', 'shopping'],
+      planner: ['shopping', 'home'],
+      shopping: ['recipes', 'home'],
+      recipes: ['shopping', 'home'],
+      cleaning: ['home', 'settings'],
+      finance: ['home', 'settings'],
+      settings: ['home', 'finance']
+    };
+
+    return candidateMap[activeTab].filter((tab) => tab === 'home' || tab === 'settings' || visibleSections[tab]);
+  }, [activeTab, visibleSections]);
+
+  useEffect(() => {
+    const tabsToPrefetch = preferredPrefetchTabs.slice(0, 2);
+    if (tabsToPrefetch.length === 0) return;
+
+    let timeoutId: number | null = null;
+    let idleId: number | null = null;
+
+    const runPrefetch = () => {
+      tabsToPrefetch.forEach((tab, index) => {
+        window.setTimeout(() => preloadSection(tab), index * 180);
+      });
+    };
+
+    const requestIdle = window.requestIdleCallback?.bind(window);
+    const cancelIdle = window.cancelIdleCallback?.bind(window);
+
+    if (requestIdle) {
+      idleId = requestIdle(runPrefetch, { timeout: 1200 });
+    } else {
+      timeoutId = window.setTimeout(runPrefetch, 500);
+    }
+
+    return () => {
+      if (idleId !== null && cancelIdle) {
+        cancelIdle(idleId);
+      }
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [preferredPrefetchTabs, preloadSection]);
 
   const stripKnownNotificationEmoji = useCallback((text: string) => {
     return String(text || '').replace(/^(🔔|📅|✨|🛒|💊|🏠|🍽️)\s*/, '');
@@ -210,6 +339,7 @@ function App() {
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
   const touchStartPos = useRef<{ x: number, y: number } | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
 
   // Swipe Navigation Logic (Mobile Only)
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -276,15 +406,26 @@ function App() {
     };
 
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 40);
+      if (scrollFrameRef.current !== null) return;
+
+      scrollFrameRef.current = window.requestAnimationFrame(() => {
+        scrollFrameRef.current = null;
+        const nextIsScrolled = window.scrollY > 40;
+        setIsScrolled(prev => (prev === nextIsScrolled ? prev : nextIsScrolled));
+      });
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
     
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("scroll", handleScroll);
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
     };
   }, [isMobile]);
 
@@ -1011,10 +1152,16 @@ function App() {
   };
 
   const handleAddTask = async (roomId: string, taskName: string) => {
-    if (!taskName.trim()) return;
+    const cleanTaskName = sanitizeTaskName(taskName);
+    if (!cleanTaskName) return;
+    if (hasRoomTask(roomTasks, roomId, cleanTaskName)) {
+      setNewTaskName(cleanTaskName);
+      return;
+    }
+
     const id = generateId();
     try {
-      await setDoc(doc(db, colPath('roomTasks'), id), { id, roomId, taskName: taskName.trim(), createdAt: Date.now() });
+      await setDoc(doc(db, colPath('roomTasks'), id), { id, roomId, taskName: cleanTaskName, createdAt: Date.now() });
       setNewTaskName('');
       setShowAddTask(false);
     } catch (e) {
@@ -1025,9 +1172,12 @@ function App() {
   const handleDeleteRoomTask = async (taskId: string) => {
     const task = roomTasks.find(t => t.id === taskId);
     if (!task) return;
+    const duplicateTaskIds = roomTasks
+      .filter((currentTask) => buildRoomTaskKey(currentTask.roomId, currentTask.taskName) === buildRoomTaskKey(task.roomId, task.taskName))
+      .map((currentTask) => currentTask.id);
 
     try {
-      await deleteDoc(doc(db, colPath('roomTasks'), taskId));
+      await Promise.all(duplicateTaskIds.map((id) => deleteDoc(doc(db, colPath('roomTasks'), id))));
       
       const notifId = generateId();
       await setDoc(doc(db, colPath('notifications'), notifId), {
@@ -1280,7 +1430,11 @@ function App() {
   }
 
   if (!user) {
-    return <Login />;
+    return (
+      <Suspense fallback={<div className="full-screen-skeleton skeleton-box"></div>}>
+        <Login />
+      </Suspense>
+    );
   }
 
   return (
@@ -1296,6 +1450,8 @@ function App() {
             <div 
               className="nav-icon-wrapper nav-icon-button"
               onClick={() => setActiveTab('home')}
+              aria-label="Vai alla home"
+              title="Vai alla home"
             >
               <img
                 src={profileAvatar || 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&q=80&w=200&h=200'}
@@ -1303,12 +1459,14 @@ function App() {
                 className="nav-icon-hover nav-icon-hover-static"
               />
             </div>
-            <h2 className="mobile-header-title">{activeTab.toUpperCase()}</h2>
+            <h2 className="mobile-header-title">{getTabLabel(activeTab)}</h2>
           </div>
           <div className="mobile-header-right">
              <button
                 className={`notif-btn settings-shortcut-btn ${activeTab === 'settings' ? 'is-active' : ''}`}
                 onClick={() => setActiveTab(activeTab === 'settings' ? 'home' : 'settings')}
+                aria-label={activeTab === 'settings' ? 'Torna alla home' : 'Apri impostazioni'}
+                title={activeTab === 'settings' ? 'Torna alla home' : 'Apri impostazioni'}
               >
                 <Settings size={22} strokeWidth={2.5} />
               </button>
@@ -1316,6 +1474,8 @@ function App() {
                 <button
                   className={`notif-btn ${notifications.some(n => !n.read) ? 'has-unread' : ''}`}
                   onClick={() => setShowNotifications(!showNotifications)}
+                  aria-label="Apri notifiche"
+                  title="Apri notifiche"
                 >
                   <Bell size={24} strokeWidth={2.5} />
                   {notifications.some(n => !n.read) && <span className="notif-badge" />}
@@ -1496,16 +1656,20 @@ function App() {
 
           <div className="nav-tabs">
             {[
+              { id: 'home', label: getTabLabel('home'), icon: Home },
               { id: 'planner', label: 'Calendario Menù', icon: CalendarIcon },
               { id: 'shopping', label: 'Lista Spesa', icon: ShoppingCart },
               { id: 'recipes', label: 'Ricette', icon: BookOpen },
               { id: 'cleaning', label: 'Pulizie', icon: Sparkles },
               { id: 'finance', label: 'Finanze', icon: Wallet },
-            ].filter(t => visibleSections[t.id]).map(tab => (
+            ].filter(t => t.id === 'home' || visibleSections[t.id]).map(tab => (
               <button
                 key={tab.id}
                 className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
+                onMouseEnter={() => preloadSection(tab.id as AppTab)}
+                onFocus={() => preloadSection(tab.id as AppTab)}
                 onClick={() => setActiveTab(tab.id as any)}
+                aria-label={`Apri ${tab.label}`}
               >
                 <tab.icon size={20} strokeWidth={2.5} />
                 <span>{tab.label}</span>
@@ -1518,6 +1682,8 @@ function App() {
                 <button
                   className={`notif-btn ${notifications.some(n => !n.read) ? 'has-unread' : ''}`}
                   onClick={() => setShowNotifications(!showNotifications)}
+                  aria-label="Apri notifiche"
+                  title="Apri notifiche"
                 >
                   <Bell size={22} strokeWidth={2.5} />
                   {notifications.some(n => !n.read) && <span className="notif-badge" />}
@@ -1642,7 +1808,7 @@ function App() {
               <div className="skeleton-box" style={{ width: '100%', height: '300px', borderRadius: '24px' }} />
             </div>
           ) : (
-            <>
+            <Suspense fallback={<SectionFallback />}>
               {activeTab === 'home' && (
             <HomeSection
               isMobile={isMobile}
@@ -1650,7 +1816,7 @@ function App() {
               mealPlan={mealPlan}
               shoppingList={shoppingList}
               recipes={recipes}
-              roomTasks={roomTasks}
+              roomTasks={uniqueRoomTasks}
               cleaningLogs={cleaningLogs}
               taskSettings={taskSettings}
               events={events}
@@ -1659,21 +1825,6 @@ function App() {
               onDeleteEvent={handleDeleteEvent}
               onNavigate={(tab) => setActiveTab(tab as 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings')}
               expenses={expenses}
-              onQuickAction={(action) => {
-                if (action === 'add-shopping') setActiveTab('shopping');
-                if (action === 'add-recipe') {
-                  setActiveTab('recipes');
-                  handleAddNewRecipe();
-                }
-                if (action === 'add-task') {
-                  setActiveTab('cleaning');
-                }
-                if (action.startsWith('go-to-room:')) {
-                  const roomId = action.split(':')[1];
-                  setSelectedRoom(roomId);
-                  setActiveTab('cleaning');
-                }
-              }}
             />
           )}
 
@@ -1767,7 +1918,7 @@ function App() {
             newTaskName={newTaskName}
             setNewTaskName={setNewTaskName}
             handleAddTask={handleAddTask}
-            roomTasks={roomTasks}
+            roomTasks={uniqueRoomTasks}
             cleaningLogs={cleaningLogs}
             handleDeleteRoomTask={handleDeleteRoomTask}
             handleCompleteTask={handleCompleteTask}
@@ -1810,7 +1961,7 @@ function App() {
             onToggleDarkMode={handleToggleDarkMode}
           />
         )}
-        </>
+        </Suspense>
       )}
       </div>
       </div>
@@ -1819,10 +1970,13 @@ function App() {
         <BottomNavigation 
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
+          preloadTab={(tab) => preloadSection(tab as AppTab)}
           notificationsCount={notifications.filter(n => !n.read).length}
           visibleSections={visibleSections}
         />
       )}
+
+      <PerformanceHUD activeTab={activeTab} />
     </div>
   );
 }

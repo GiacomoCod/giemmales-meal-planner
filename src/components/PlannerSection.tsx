@@ -8,6 +8,7 @@ import type { MealPlan, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import { useInViewport } from '../hooks/useInViewport';
 import spaghettiImg from '../assets/spaghetti-3d-cutout.png';
 import './PlannerSection.css';
 
@@ -45,6 +46,7 @@ export function PlannerSection({
   const [showTagSettings, setShowTagSettings] = useState(false);
   const [showPlannerSheet, setShowPlannerSheet] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const { ref: heroGraphicRef, isInView: isHeroGraphicInView } = useInViewport<HTMLDivElement>();
   const { transform: plannerSheetTransform, handlers: plannerSheetHandlers } = useSwipeToDismiss(() => {
     setShowPlannerSheet(false);
     setShowMoreMenu(false);
@@ -75,9 +77,16 @@ export function PlannerSection({
             </div>
             <p className="planner-page-subtitle">Organizza la tua settimana culinaria in modo semplice e veloce</p>
           </div>
-          <div className="planner-hero-graphic">
+          <div ref={heroGraphicRef} className={`planner-hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
             <div className="floating-burger-wrapper">
-              <img src={spaghettiImg} alt="3D Spaghetti Island" className="floating-burger" />
+              <img
+                src={spaghettiImg}
+                alt="3D Spaghetti Island"
+                className="floating-burger"
+                width={1024}
+                height={1024}
+                decoding="async"
+              />
               <div className="burger-shadow"></div>
             </div>
           </div>

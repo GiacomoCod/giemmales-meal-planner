@@ -1,8 +1,8 @@
 /* ─── Recipes Hero Header ────────────────── */
 .recipes-hero {
   background: var(--surface-color);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border-radius: 24px;
   padding: 30px 40px;
   margin-top: 20px; /* Space from navbar */
@@ -132,7 +132,7 @@
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
   box-shadow: var(--shadow-sm);
 }
 

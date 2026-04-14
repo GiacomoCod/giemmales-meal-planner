@@ -7,6 +7,7 @@ import type { RoomTask, CleaningLog, TaskSettings, TaskUnit, Tag } from '../type
 import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import { useInViewport } from '../hooks/useInViewport';
 import cleaningImg from '../assets/cleaning-3d-cutout.png';
 import './CleaningSection.css';
 
@@ -66,6 +67,7 @@ export function CleaningSection({
   const [managerPerformerId, setManagerPerformerId] = useState('');
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [logToDeleteId, setLogToDeleteId] = useState<string | null>(null);
+  const { ref: heroGraphicRef, isInView: isHeroGraphicInView } = useInViewport<HTMLDivElement>();
   const { transform: tasksSheetTransform, handlers: tasksSheetHandlers } = useSwipeToDismiss(() => {
     setShowTasksSheet(false);
     setShowMoreMenu(false);
@@ -211,7 +213,7 @@ export function CleaningSection({
                 )}
               </div>
 
-              <div className="cleaning-hero-graphic">
+              <div ref={heroGraphicRef} className={`cleaning-hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
                 <div className="cleaning-bubbles-container">
                   <div className="cleaning-bubble" style={{ '--size': '20px', '--left': '10%', '--delay': '0s', '--duration': '4s', '--drift': '20px' } as any}></div>
                   <div className="cleaning-bubble" style={{ '--size': '15px', '--left': '30%', '--delay': '1s', '--duration': '5s', '--drift': '-15px' } as any}></div>
@@ -220,7 +222,14 @@ export function CleaningSection({
                   <div className="cleaning-bubble" style={{ '--size': '18px', '--left': '50%', '--delay': '1.5s', '--duration': '3.5s', '--drift': '15px' } as any}></div>
                 </div>
                 <div className="floating-kit-wrapper">
-                  <img src={cleaningImg} alt="Cleaning Kit" className="floating-kit" />
+                  <img
+                    src={cleaningImg}
+                    alt="Cleaning Kit"
+                    className="floating-kit"
+                    width={1024}
+                    height={1024}
+                    decoding="async"
+                  />
                   <div className="kit-shadow"></div>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Calendar,
   ShoppingCart,
@@ -7,7 +7,6 @@ import {
   Plus,
   Utensils,
   ArrowRight,
-  ClipboardList,
   ChevronRight,
   ChevronLeft,
   X,
@@ -17,12 +16,14 @@ import {
   Pill,
   Wallet
 } from 'lucide-react';
-import { format, startOfWeek, addDays, isSameDay, addWeeks, differenceInCalendarWeeks } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, addWeeks, differenceInCalendarWeeks, startOfDay } from 'date-fns';
 import { it } from 'date-fns/locale';
 import './HomeSection.css';
 import { MEALS, ROOMS } from '../constants';
 import type { MealPlan, ShoppingItem, Recipe, RoomTask, CleaningLog, TaskSettings, CalendarEvent, Tag, Expense } from '../types';
 import houseImg from '../assets/house-3d-cutout.png';
+import { useInViewport } from '../hooks/useInViewport';
+import { getNextCleaningDate } from '../utils/cleaningTasks';
 
 interface HomeSectionProps {
   isMobile?: boolean;
@@ -38,7 +39,6 @@ interface HomeSectionProps {
   onAddEvent: (event: Omit<CalendarEvent, 'id'>) => Promise<boolean>;
   onDeleteEvent: (id: string) => void;
   onNavigate: (tab: 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance') => void;
-  onQuickAction: (action: string) => void;
   expenses: Expense[];
 }
 
@@ -56,7 +56,6 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   onAddEvent,
   onDeleteEvent,
   onNavigate,
-  onQuickAction,
   expenses
 }) => {
   const [showEventForm, setShowEventForm] = useState(false);
@@ -68,27 +67,26 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   const [eventFormError, setEventFormError] = useState<string | null>(null);
   const [eventFormAttempted, setEventFormAttempted] = useState(false);
   const [offsetWeeks, setOffsetWeeks] = useState(0);
+  const [isCalendarExpanded, setIsCalendarExpanded] = useState(() => !isMobile);
+  const { ref: heroGraphicRef, isInView: isHeroGraphicInView } = useInViewport<HTMLDivElement>();
 
   const todayDate = new Date();
   const currentWeekStart = startOfWeek(addWeeks(todayDate, offsetWeeks), { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
+  const tasksByDate = useMemo(() => {
+    const groupedTasks = new Map<string, RoomTask[]>();
 
-  // Calculate next cleaning date
-  const getNextCleaningDate = (taskName: string, roomId: string) => {
-    const logs = cleaningLogs.filter(l => l.roomId === roomId && l.taskType === taskName);
-    const settings = taskSettings[taskName] || { value: 1, unit: 'settimane' };
+    roomTasks.forEach((task) => {
+      const nextDate = getNextCleaningDate(task, cleaningLogs, taskSettings);
+      if (!nextDate) return;
 
-    let totalDays = settings.value;
-    if (settings.unit === 'settimane') totalDays *= 7;
-    else if (settings.unit === 'mesi') totalDays *= 30;
-    else if (settings.unit === 'anni') totalDays *= 365;
+      const currentTasks = groupedTasks.get(nextDate) || [];
+      currentTasks.push(task);
+      groupedTasks.set(nextDate, currentTasks);
+    });
 
-    if (logs.length === 0) return null; // Don't show in calendar if never done before
-
-    const lastLog = logs.sort((a, b) => b.timestamp - a.timestamp)[0];
-    const nextDate = addDays(new Date(lastLog.timestamp), totalDays);
-    return format(nextDate, 'yyyy-MM-dd');
-  };
+    return groupedTasks;
+  }, [cleaningLogs, roomTasks, taskSettings]);
 
   const handleAddEventSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,6 +147,19 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   const pendingHome = shoppingList.filter(item => !item.checked && item.category === 'home').length;
   const pendingMed = shoppingList.filter(item => !item.checked && item.category === 'medicine').length;
   const isCreateEventDisabled = !newEventText.trim() || (showEndTime && (!newEventTime || !newEventEndTime || newEventEndTime <= newEventTime));
+  const todayStart = startOfDay(todayDate);
+  const todayKey = format(todayDate, 'yyyy-MM-dd');
+  const todayMeals = mealPlan[todayKey] || {};
+  const compactWeekDays = useMemo(() => {
+    const upcomingDays = weekDays.filter((day) => day >= todayStart);
+    const source = upcomingDays.length > 0 ? upcomingDays : weekDays;
+    return source.slice(0, 3);
+  }, [todayStart, weekDays]);
+  const displayedWeekDays = isMobile && !isCalendarExpanded ? compactWeekDays : weekDays;
+  const compactAgendaCount = displayedWeekDays.reduce((count, day) => {
+    const dateKey = format(day, 'yyyy-MM-dd');
+    return count + events.filter((event) => event.date === dateKey).length + (tasksByDate.get(dateKey) || []).length;
+  }, 0);
 
   // Finance: totale spese mese corrente
   const monthFinanceTotal = expenses.reduce((sum, e) => {
@@ -169,9 +180,16 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               <h1 className="welcome-name">{userName}</h1>
               <p className="hero-subtitle">Organizza al meglio la tua casetta</p>
             </div>
-            <div className="hero-graphic">
+            <div ref={heroGraphicRef} className={`hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
               <div className="floating-house-wrapper">
-                <img src={houseImg} alt="3D House" className="floating-house" />
+                <img
+                  src={houseImg}
+                  alt="3D House"
+                  className="floating-house"
+                  width={1024}
+                  height={1024}
+                  decoding="async"
+                />
                 <div className="house-shadow"></div>
               </div>
             </div>
@@ -181,13 +199,13 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
 
       <div className="home-grid">
         {/* NEW HOUSE CALENDAR WIDGET */}
-        <section className="home-card card-full-width glass house-calendar-card">
+        <section className={`home-card card-full-width glass house-calendar-card ${isMobile && !isCalendarExpanded ? 'is-mobile-compact' : ''}`}>
           <div className="card-header-with-action">
             <div className="header-left">
               <Calendar className="icon-vibrant-indigo" size={24} />
               <div className="header-title-nav">
                 <h3 className="card-title">
-                  Calendario della Casa
+                  {isMobile && !isCalendarExpanded ? 'Agenda rapida' : 'Calendario della Casa'}
                 </h3>
                 <div className="calendar-nav-arrows">
                   <div className="nav-btn-group">
@@ -216,27 +234,42 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                     <button className="nav-today-btn" onClick={() => setOffsetWeeks(0)}>Oggi</button>
                   )}
                 </div>
+                {isMobile && (
+                  <span className="calendar-compact-meta">
+                    {isCalendarExpanded ? 'Vista completa settimana' : `${displayedWeekDays.length} giorni • ${compactAgendaCount} elementi`}
+                  </span>
+                )}
               </div>
             </div>
-            <button
-              className="add-event-btn"
-              onClick={() => {
-                setEventFormError(null);
-                setEventFormAttempted(false);
-                setShowEventForm(true);
-              }}
-            >
-              <Plus size={isMobile ? 20 : 18} />
-              {!isMobile && <span>Nuovo Evento</span>}
-            </button>
+            <div className="house-calendar-actions">
+              {isMobile && (
+                <button
+                  className="calendar-toggle-btn"
+                  onClick={() => setIsCalendarExpanded((expanded) => !expanded)}
+                >
+                  {isCalendarExpanded ? 'Compatta' : 'Espandi'}
+                </button>
+              )}
+              <button
+                className="add-event-btn"
+                onClick={() => {
+                  setEventFormError(null);
+                  setEventFormAttempted(false);
+                  setShowEventForm(true);
+                }}
+              >
+                <Plus size={isMobile ? 20 : 18} />
+                {!isMobile && <span>Nuovo Evento</span>}
+              </button>
+            </div>
           </div>
 
           <div className="calendar-scroll-wrapper">
-            <div className="house-calendar-grid">
-              {weekDays.map(day => {
+            <div className={`house-calendar-grid ${isMobile && !isCalendarExpanded ? 'is-compact-mobile' : ''}`}>
+              {displayedWeekDays.map(day => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayEvents = events.filter(e => e.date === dateKey);
-                const dayTasks = roomTasks.filter(t => getNextCleaningDate(t.taskName, t.roomId) === dateKey);
+                const dayTasks = tasksByDate.get(dateKey) || [];
 
                 const isToday = isSameDay(day, new Date());
 
@@ -287,67 +320,36 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               <span className="card-tag">Menù di Oggi</span>
             </div>
             <div className="meal-preview-list">
-              {(() => {
-                const todayKey = format(new Date(), 'yyyy-MM-dd');
-                const todayMeals = mealPlan[todayKey] || {};
-                return MEALS.map(meal => {
-                  const entries = todayMeals[meal.id] || [];
-                  return (
-                    <div key={meal.id} className="meal-preview-row">
-                      <span className="meal-name-label">{meal.label}</span>
-                      <div className="meal-entries-stack">
-                        {entries.length > 0 ? (
-                          entries.map(entry => (
-                            <div key={entry.id} className="meal-entry-pill">
-                              <span
-                                className="assignee-tag-mini"
-                                style={{ backgroundColor: getTagColor(entry.assignee) }}
-                              >
-                                {entry.assignee}
-                              </span>
-                              <span className="meal-entry-name">{entry.text}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <span className="meal-entry-empty">Non pianificato</span>
-                        )}
-                      </div>
+              {MEALS.map(meal => {
+                const entries = todayMeals[meal.id] || [];
+                return (
+                  <div key={meal.id} className="meal-preview-row">
+                    <span className="meal-name-label">{meal.label}</span>
+                    <div className="meal-entries-stack">
+                      {entries.length > 0 ? (
+                        entries.map(entry => (
+                          <div key={entry.id} className="meal-entry-pill">
+                            <span
+                              className="assignee-tag-mini"
+                              style={{ backgroundColor: getTagColor(entry.assignee) }}
+                            >
+                              {entry.assignee}
+                            </span>
+                            <span className="meal-entry-name">{entry.text}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="meal-entry-empty">Non pianificato</span>
+                      )}
                     </div>
-                  );
-                });
-              })()}
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div className="card-footer">
             <span>Vai al calendario menù</span>
             <ArrowRight size={18} />
-          </div>
-        </div>
-
-        {/* Quick Organizers */}
-        <div className="home-card card-medium glass highlight-blue">
-          <div className="card-content">
-            <h3 className="card-title">Cosa vuoi organizzare?</h3>
-            <div className="action-buttons">
-              <button
-                className="action-btn"
-                onClick={() => onQuickAction('add-shopping')}
-              >
-                <div className="action-icon blue">
-                  <Plus size={20} />
-                </div>
-                <span>Spesa</span>
-              </button>
-              <button
-                className="action-btn"
-                onClick={() => onQuickAction('add-recipe')}
-              >
-                <div className="action-icon purple">
-                  <Plus size={20} />
-                </div>
-                <span>Ricetta</span>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -407,13 +409,6 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 <span>Aggiungi una ricetta</span>
               </div>
             )}
-          </div>
-        </div>
-
-        <div className="home-card card-small glass shortcut-card" onClick={() => onQuickAction('add-task')}>
-          <div className="card-content centered">
-            <ClipboardList className="icon-vibrant-teal" size={28} />
-            <span className="shortcut-label">Gestisci Pulizie</span>
           </div>
         </div>
 
