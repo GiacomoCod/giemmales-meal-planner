@@ -2,14 +2,24 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence } from "firebase/auth";
 
+const getRequiredEnv = (key: string) => {
+  const value = import.meta.env[key];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return value;
+};
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBCl1UWI3S_Jw9iGXvCY32wloLz_ai7kds",
-  authDomain: "meal-planner-vibe.firebaseapp.com",
-  projectId: "meal-planner-vibe",
-  storageBucket: "meal-planner-vibe.firebasestorage.app",
-  messagingSenderId: "981656795010",
-  appId: "1:981656795010:web:85c81b8e8d72b9a10a419b",
-  measurementId: "G-BRWHDHV0EZ"
+  apiKey: getRequiredEnv("VITE_FIREBASE_API_KEY"),
+  authDomain: getRequiredEnv("VITE_FIREBASE_AUTH_DOMAIN"),
+  projectId: getRequiredEnv("VITE_FIREBASE_PROJECT_ID"),
+  storageBucket: getRequiredEnv("VITE_FIREBASE_STORAGE_BUCKET"),
+  messagingSenderId: getRequiredEnv("VITE_FIREBASE_MESSAGING_SENDER_ID"),
+  appId: getRequiredEnv("VITE_FIREBASE_APP_ID"),
+  ...(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+    ? { measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID }
+    : {})
 };
 
 export const app = initializeApp(firebaseConfig);

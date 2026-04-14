@@ -1,73 +1,45 @@
-# React + TypeScript + Vite
+# Home Planner
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Meal planner/PWA per organizzare menu, spesa, pulizie, eventi e finanze domestiche.
 
-Currently, two official plugins are available:
+## Setup locale
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Copia `.env.example` in `.env.local`.
+2. Inserisci la configurazione Firebase web e le eventuali chiavi push.
+3. Avvia il progetto con `npm install` e `npm run dev`.
 
-## React Compiler
+## Config richieste
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Le variabili client Firebase sono lette da `VITE_FIREBASE_*`.
+Non sono credenziali server, ma vanno comunque tenute fuori dal repository per mantenere il progetto riutilizzabile e più ordinato.
 
-## Expanding the ESLint configuration
+Per le funzioni push server-side servono anche:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- `WEB_PUSH_VAPID_PUBLIC_KEY`
+- `WEB_PUSH_VAPID_PRIVATE_KEY`
+- `WEB_PUSH_SUBJECT`
+- `FIREBASE_SERVICE_ACCOUNT_JSON` per Netlify/functions quando non si usa `applicationDefault()`
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Registrazione utenti
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+La registrazione self-service è controllata da `VITE_ENABLE_SELF_SIGNUP`.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- `false`: solo login, più sicuro per istanze private/familiari
+- `true`: abilita anche la creazione account dalla schermata di login
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Mobile config locali
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Questi file non vanno versionati:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- `ios/App/App/GoogleService-Info.plist`
+- `android/app/google-services.json`
+
+Nel repository trovi solo template/esempi. In questo momento il repository e il flusso supportato sono orientati alla versione web/PWA, non a una build Firebase nativa per App Store o Play Store.
+
+## Nota sicurezza
+
+Prima di pubblicare il repository:
+
+- verifica le regole Firebase/Auth/Firestore/Storage lato progetto
+- controlla le env vars su Netlify
+- ruota eventuali chiavi se in passato sono finite per errore nel repository

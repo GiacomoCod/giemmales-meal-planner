@@ -4,6 +4,8 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { auth } from '../firebase';
 import './Login.css';
 
+const selfSignupEnabled = import.meta.env.VITE_ENABLE_SELF_SIGNUP === 'true';
+
 export function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
@@ -27,6 +29,10 @@ export function Login() {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, fakeEmail, password);
       } else {
+        if (!selfSignupEnabled) {
+          setError('La registrazione pubblica è disattivata per questa istanza.');
+          return;
+        }
         await createUserWithEmailAndPassword(auth, fakeEmail, password);
       }
     } catch (err: any) {
@@ -111,18 +117,24 @@ export function Login() {
         </form>
 
         <div className="login-footer">
-          <p>
-            {isLogin ? "Non hai ancora un'abitazione?" : "Hai già un'abitazione?"}
-          </p>
-          <button 
-            className="toggle-mode-btn" 
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError(null);
-            }}
-          >
-            {isLogin ? 'Crea un nuovo account' : 'Accedi qui'}
-          </button>
+          {selfSignupEnabled ? (
+            <>
+              <p>
+                {isLogin ? "Non hai ancora un'abitazione?" : "Hai già un'abitazione?"}
+              </p>
+              <button
+                className="toggle-mode-btn"
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError(null);
+                }}
+              >
+                {isLogin ? 'Crea un nuovo account' : 'Accedi qui'}
+              </button>
+            </>
+          ) : (
+            <p>Registrazione gestita manualmente per questa istanza.</p>
+          )}
         </div>
       </div>
     </div>
