@@ -1,4 +1,5 @@
 import React, { useState, useMemo, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Wallet, Plus, Trash2, Check, X, ChevronLeft, ChevronRight,
   TrendingUp, PieChart,
@@ -137,6 +138,7 @@ interface FinanceSectionProps {
   onAddTag: (tag: Tag) => Promise<void>;
   onDeleteTag: (tagId: string) => Promise<void>;
   isMobile: boolean;
+  isActive?: boolean;
 }
 
 type FinanceCoinStyle = CSSProperties & {
@@ -152,7 +154,7 @@ type FinanceCoinStyle = CSSProperties & {
    COMPONENT
    ============================================================ */
 export function FinanceSection({ 
-  expenses, tags, onAddExpense, onDeleteExpense, onAddTag, onDeleteTag, isMobile 
+  expenses, tags, onAddExpense, onDeleteExpense, onAddTag, onDeleteTag, isMobile, isActive 
 }: FinanceSectionProps) {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -578,11 +580,8 @@ export function FinanceSection({
                 );
               })}
               {filteredExpenses.length === 0 && <p className="f-empty-msg">Nessuna spesa trovata.</p>}
-            </div>
-          </div>
-
-          {isMobile && (
-            <>
+                      {isMobile && createPortal(
+            <div className={`mobile-tab-panel-portal ${isActive ? 'is-active' : ''}`}>
               <div className="mobile-fab-container-left">
                 {showMoreMenu && (
                   <div className="mobile-more-menu" onClick={e => e.stopPropagation()}>
@@ -618,7 +617,7 @@ export function FinanceSection({
                   >
                     <div className="bottom-sheet-drag-handle" />
                     <div className="management-sheet-header">
-                      <h3><Wallet size={24} /> Elenco Spese</h3>
+                       <h3><Wallet size={24} /> Elenco Spese</h3>
                     </div>
                     <div className="management-sheet-body">
                       {filteredExpenses.map(exp => (
@@ -639,7 +638,8 @@ export function FinanceSection({
                   </div>
                 </div>
               )}
-            </>
+            </div>,
+            document.body
           )}
 
         </div>

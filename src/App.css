@@ -1305,14 +1305,6 @@ html.pager-gesture-lock body {
   width: 100%;
 }
 
-/* Prevent fixed FABs inside panels from being stretched to 100% width by the rule above */
-.mobile-tab-panel > .mobile-fab-container-left {
-  width: max-content !important;
-}
-
-.mobile-tab-panel > .mobile-fab-add {
-  width: 64px !important;
-}
 
 .shopping-only {
   display: flex;
@@ -4996,6 +4988,50 @@ button.assignee-badge:hover {
 
 .rooms-grid.is-mobile .room-card:nth-child(4) {
   border-bottom-color: var(--room-salotto);
+}
+
+/* PORTAL AND FAB GLOBAL STYLES */
+.mobile-tab-panel-portal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 4000;
+}
+
+.mobile-tab-panel-portal > * {
+  pointer-events: auto;
+}
+
+.mobile-tab-panel-portal:not(.is-active) .mobile-fab-add,
+.mobile-tab-panel-portal:not(.is-active) .mobile-fab-container-left {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85) translateZ(0);
+}
+
+.mobile-tab-panel-portal.is-active .mobile-fab-add,
+.mobile-tab-panel-portal.is-active .mobile-fab-container-left {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1) translateZ(0);
+}
+
+/* Base fade transition for modals in portal to prevent visual pop while swiping */
+.mobile-tab-panel-portal:not(.is-active) .management-sheet-overlay,
+.mobile-tab-panel-portal:not(.is-active) .recipe-modal-overlay {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.mobile-tab-panel-portal.is-active .management-sheet-overlay,
+.mobile-tab-panel-portal.is-active .recipe-modal-overlay {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.3s ease;
 }
 
 .rooms-grid.is-mobile .room-card:nth-child(5) {

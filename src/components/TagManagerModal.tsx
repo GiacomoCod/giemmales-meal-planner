@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, Check, Users } from 'lucide-react';
 import type { Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
@@ -53,8 +54,8 @@ export function TagManagerModal({
     setShowTagDeleteConfirm(null);
   }, 100);
 
-  return (
-    <div className="bottom-sheet-overlay" onClick={() => {
+  return createPortal(
+    <div className="bottom-sheet-overlay tm-global-portal" onClick={() => {
       if (!closeOnOverlay) return;
       onClose();
       setShowTagDeleteConfirm(null);
@@ -167,6 +168,7 @@ export function TagManagerModal({
         
         <p className="tm-modal-hint">{hint}</p>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

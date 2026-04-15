@@ -1,4 +1,5 @@
 import React, { useState, useEffect, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Sparkles, ChevronRight as ChevronRightIcon, Plus, Check, X, Calendar as CalendarIcon, RefreshCw, Trash2, Minus, MoreVertical, List, Settings, Users, Pencil, History } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, parseISO } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -55,6 +56,7 @@ interface CleaningSectionProps {
   tags: Tag[];
   onAddTag: (tag: Tag) => void;
   onDeleteTag: (tagId: string) => void;
+  isActive?: boolean;
 }
 
 export function CleaningSection({
@@ -63,7 +65,7 @@ export function CleaningSection({
   selectedRoom, setSelectedRoom, showAddTask, setShowAddTask, newTaskName, setNewTaskName, handleAddTask,
   roomTasks, cleaningLogs, handleDeleteRoomTask, handleCompleteTask, handleUpdateCleaningLog, handleDeleteCleaningLog,
   taskSettings, showTaskSettings, setShowTaskSettings, editingFrequency, setEditingFrequency,
-  handleUpdateTaskFrequency, isMobile, tags, onAddTag, onDeleteTag
+  handleUpdateTaskFrequency, isMobile, tags, onAddTag, onDeleteTag, isActive
 }: CleaningSectionProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
@@ -666,8 +668,8 @@ export function CleaningSection({
         </div>
       )}
 
-      {isMobile && !selectedRoom && (
-        <>
+      {isMobile && !selectedRoom && createPortal(
+        <div className={`mobile-tab-panel-portal ${isActive ? 'is-active' : ''}`}>
           <div className="mobile-fab-container-left">
             {showMoreMenu && (
               <div className="mobile-more-menu" onClick={e => e.stopPropagation()}>
@@ -718,9 +720,9 @@ export function CleaningSection({
                       const latestLog = sortLogs(
                         cleaningLogs.filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
                       )[0];
-                      if (!latestLog) return false; // Exclude never done - show only those with history
+                      if (!latestLog) return false;
                       const { progress } = getTaskUrgency(latestLog?.date || '', task.taskName, Date.now());
-                      return progress > 0; // Show only tasks with a decay/progression
+                      return progress > 0;
                     });
 
                     if (activeTasks.length === 0) {
@@ -758,7 +760,8 @@ export function CleaningSection({
               </div>
             </div>
           )}
-        </>
+        </div>,
+        document.body
       )}
     </>
   );

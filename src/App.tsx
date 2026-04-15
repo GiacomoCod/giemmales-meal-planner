@@ -1825,6 +1825,7 @@ function App() {
           tags={tags}
           onAddTag={handleAddTag}
           onDeleteTag={handleDeleteTag}
+          isActive={activeTab === 'planner'}
         />
       );
     }
@@ -1851,6 +1852,7 @@ function App() {
           onDeleteCustomSuggestion={(text) => {
             setSuggestions(prev => prev.filter(s => s.text !== text));
           }}
+          isActive={activeTab === 'shopping'}
         />
       );
     }
@@ -1874,6 +1876,7 @@ function App() {
           tags={tags}
           onAddTag={handleAddTag}
           onDeleteTag={handleDeleteTag}
+          isActive={activeTab === 'recipes'}
         />
       );
     }
@@ -1916,6 +1919,7 @@ function App() {
           tags={tags}
           onAddTag={handleAddTag}
           onDeleteTag={handleDeleteTag}
+          isActive={activeTab === 'cleaning'}
         />
       );
     }
@@ -1931,6 +1935,7 @@ function App() {
             onAddTag={handleAddTag}
             onDeleteTag={handleDeleteTag}
             isMobile={isMobile}
+            isActive={activeTab === 'finance'}
           />
         </div>
       );

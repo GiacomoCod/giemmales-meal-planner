@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Check, Trash2, X, Store, Home, Search, Sparkles, ShoppingBag, Pill, MoreVertical } from 'lucide-react';
 import type { ShoppingItem } from '../types';
 import shoppingCartImg from '../assets/shopping-cart-3d-cutout.png';
@@ -21,6 +22,7 @@ interface ShoppingListSectionProps {
   suggestions: { text: string; icon: string; category?: 'supermarket' | 'home' | 'medicine' }[];
   onAddCustomSuggestion: (text: string, cat: 'supermarket' | 'home' | 'medicine', icon?: string) => void;
   onDeleteCustomSuggestion: (text: string) => void;
+  isActive?: boolean;
 }
 
 export function ShoppingListSection({
@@ -37,7 +39,8 @@ export function ShoppingListSection({
   deleteItem,
   suggestions,
   onAddCustomSuggestion,
-  onDeleteCustomSuggestion
+  onDeleteCustomSuggestion,
+  isActive
 }: ShoppingListSectionProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -332,115 +335,118 @@ export function ShoppingListSection({
         </div>
       </div>
 
-      {isMobile && (
-        <div className="mobile-fab-container-left">
-          {showMoreMenu && (
-            <div className="mobile-more-menu" onClick={e => e.stopPropagation()}>
-              <button className="mobile-menu-item" onClick={() => { setShowSuggestionSettings(true); setShowMoreMenu(false); }}>
-                <Sparkles size={20} />
-                <span>Personalizza suggerimenti</span>
-              </button>
+      {isMobile && createPortal(
+        <div className={`mobile-tab-panel-portal ${isActive ? 'is-active' : ''}`}>
+          <div className="mobile-fab-container-left">
+            {showMoreMenu && (
+              <div className="mobile-more-menu" onClick={e => e.stopPropagation()}>
+                <button className="mobile-menu-item" onClick={() => { setShowSuggestionSettings(true); setShowMoreMenu(false); }}>
+                  <Sparkles size={20} />
+                  <span>Personalizza suggerimenti</span>
+                </button>
+              </div>
+            )}
+            <button 
+              className={`mobile-fab-more ${showMoreMenu ? 'active' : ''}`}
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+            >
+              <MoreVertical size={28} />
+            </button>
+          </div>
+
+          {showSuggestionSettings && (
+            <div className="bottom-sheet-overlay">
+              <div 
+                className="bottom-sheet-content" 
+                onClick={e => e.stopPropagation()}
+                style={{ transform: sugSheetTransform }}
+                {...sugSheetHandlers}
+              >
+                <div className="bottom-sheet-drag-handle" />
+                <div className="management-sheet-header">
+                  <h3><Sparkles size={24} /> Suggerimenti</h3>
+                </div>
+
+                <div className="management-sheet-body">
+                  <div className="tags-list-current">
+                    {suggestions.map((s, idx) => (
+                      <div key={idx} className="tag-item-editor">
+                        <div className="tag-badge-preview" style={{ background: '#f1f5f9', color: '#1e293b' }}>
+                          <span style={{ marginRight: '8px' }}>{s.icon}</span>
+                          {s.text}
+                        </div>
+                        <button className="tag-delete-btn" onClick={() => onDeleteCustomSuggestion(s.text)}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <form className="f-add-tag-form" onSubmit={handleAddCustomSug} style={{ flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                      <input 
+                        type="text" 
+                        placeholder="Esempio: Avocado..." 
+                        value={newSugName}
+                        onChange={e => setNewSugName(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                      <input 
+                        type="text" 
+                        placeholder="🍱" 
+                        value={newSugEmoji}
+                        onChange={e => setNewSugEmoji(e.target.value)}
+                        style={{ width: '60px', textAlign: 'center' }}
+                      />
+                    </div>
+                    
+                    <div className="s-category-tabs" style={{ background: 'transparent', padding: 0, flexDirection: 'row', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className={`s-cat-btn ${newSugCat === 'supermarket' ? 'active-food' : ''}`}
+                        style={{ flex: 1, height: 'auto', flexDirection: 'column', padding: '10px 4px' }}
+                        onClick={() => setNewSugCat('supermarket')}
+                      >
+                        <div className="s-add-icon-ring ring-food" style={{ width: '36px', height: '36px', borderRadius: '10px' }}>
+                          <Store size={18} />
+                        </div>
+                        Super.
+                      </button>
+                      <button
+                        type="button"
+                        className={`s-cat-btn ${newSugCat === 'home' ? 'active-home' : ''}`}
+                        style={{ flex: 1, height: 'auto', flexDirection: 'column', padding: '10px 4px' }}
+                        onClick={() => setNewSugCat('home')}
+                      >
+                        <div className="s-add-icon-ring ring-home" style={{ width: '36px', height: '36px', borderRadius: '10px' }}>
+                          <Home size={18} />
+                        </div>
+                        Casa
+                      </button>
+                      <button
+                        type="button"
+                        className={`s-cat-btn ${newSugCat === 'medicine' ? 'active-med' : ''}`}
+                        style={{ flex: 1, height: 'auto', flexDirection: 'column', padding: '10px 4px' }}
+                        onClick={() => setNewSugCat('medicine')}
+                      >
+                        <div className="s-add-icon-ring ring-med" style={{ width: '36px', height: '36px', borderRadius: '10px' }}>
+                          <Pill size={18} />
+                        </div>
+                        Farmaci
+                      </button>
+                    </div>
+
+                    <button type="submit" className="f-add-tag-submit" style={{ width: '100%', borderRadius: '16px', marginTop: '10px' }}>
+                      <Plus size={24} />
+                      <span style={{ marginLeft: '8px', fontWeight: 800 }}>Aggiungi Suggerimento</span>
+                    </button>
+                  </form>
+                </div>
+              </div>
             </div>
           )}
-          <button 
-            className={`mobile-fab-more ${showMoreMenu ? 'active' : ''}`}
-            onClick={() => setShowMoreMenu(!showMoreMenu)}
-          >
-            <MoreVertical size={28} />
-          </button>
-        </div>
-      )}
-
-      {showSuggestionSettings && (
-        <div className="bottom-sheet-overlay">
-          <div 
-            className="bottom-sheet-content" 
-            onClick={e => e.stopPropagation()}
-            style={{ transform: sugSheetTransform }}
-            {...sugSheetHandlers}
-          >
-            <div className="bottom-sheet-drag-handle" />
-            <div className="management-sheet-header">
-              <h3><Sparkles size={24} /> Suggerimenti</h3>
-            </div>
-
-            <div className="management-sheet-body">
-              <div className="tags-list-current">
-                {suggestions.map((s, idx) => (
-                  <div key={idx} className="tag-item-editor">
-                    <div className="tag-badge-preview" style={{ background: '#f1f5f9', color: '#1e293b' }}>
-                      <span style={{ marginRight: '8px' }}>{s.icon}</span>
-                      {s.text}
-                    </div>
-                    <button className="tag-delete-btn" onClick={() => onDeleteCustomSuggestion(s.text)}>
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <form className="f-add-tag-form" onSubmit={handleAddCustomSug} style={{ flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                  <input 
-                    type="text" 
-                    placeholder="Esempio: Avocado..." 
-                    value={newSugName}
-                    onChange={e => setNewSugName(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                  <input 
-                    type="text" 
-                    placeholder="🍱" 
-                    value={newSugEmoji}
-                    onChange={e => setNewSugEmoji(e.target.value)}
-                    style={{ width: '60px', textAlign: 'center' }}
-                  />
-                </div>
-                
-                <div className="s-category-tabs" style={{ background: 'transparent', padding: 0, flexDirection: 'row', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className={`s-cat-btn ${newSugCat === 'supermarket' ? 'active-food' : ''}`}
-                    style={{ flex: 1, height: 'auto', flexDirection: 'column', padding: '10px 4px' }}
-                    onClick={() => setNewSugCat('supermarket')}
-                  >
-                    <div className="s-add-icon-ring ring-food" style={{ width: '36px', height: '36px', borderRadius: '10px' }}>
-                      <Store size={18} />
-                    </div>
-                    Super.
-                  </button>
-                  <button
-                    type="button"
-                    className={`s-cat-btn ${newSugCat === 'home' ? 'active-home' : ''}`}
-                    style={{ flex: 1, height: 'auto', flexDirection: 'column', padding: '10px 4px' }}
-                    onClick={() => setNewSugCat('home')}
-                  >
-                    <div className="s-add-icon-ring ring-home" style={{ width: '36px', height: '36px', borderRadius: '10px' }}>
-                      <Home size={18} />
-                    </div>
-                    Casa
-                  </button>
-                  <button
-                    type="button"
-                    className={`s-cat-btn ${newSugCat === 'medicine' ? 'active-med' : ''}`}
-                    style={{ flex: 1, height: 'auto', flexDirection: 'column', padding: '10px 4px' }}
-                    onClick={() => setNewSugCat('medicine')}
-                  >
-                    <div className="s-add-icon-ring ring-med" style={{ width: '36px', height: '36px', borderRadius: '10px' }}>
-                      <Pill size={18} />
-                    </div>
-                    Farmaci
-                  </button>
-                </div>
-
-                <button type="submit" className="f-add-tag-submit" style={{ width: '100%', borderRadius: '16px', marginTop: '10px' }}>
-                  <Plus size={24} />
-                  <span style={{ marginLeft: '8px', fontWeight: 800 }}>Aggiungi Suggerimento</span>
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
+        </div>,
+        document.body
       )}
     </main>
   );

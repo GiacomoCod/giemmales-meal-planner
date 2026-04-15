@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Settings, Trash2, MoreVertical, Users, Calendar as CalendarIcon } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, addDays } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -39,13 +40,14 @@ interface PlannerSectionProps {
   tags: Tag[];
   onAddTag: (tag: Tag) => void;
   onDeleteTag: (tagId: string) => void;
+  isActive?: boolean;
 }
 
 export function PlannerSection({
   isMobile, currentMonth, prevMonth, nextMonth, calendarDays, selectedWeekStart, selectedWeekEnd, monthStart,
   setSelectedWeekStart, setCurrentMonth, weekNotes, isSavingNotes, handleUpdateNotes, activeWeekDays,
   mealPlan, handleAddMealEntry, handleRemoveMealEntry, handleUpdateAssignee, handleUpdateMealEntryText,
-  tags, onAddTag, onDeleteTag
+  tags, onAddTag, onDeleteTag, isActive
 }: PlannerSectionProps) {
   const [showTagSettings, setShowTagSettings] = useState(false);
   const [showPlannerSheet, setShowPlannerSheet] = useState(false);
@@ -179,116 +181,110 @@ export function PlannerSection({
            </div>
         </div>
 
-        <div className="mobile-fab-container-left">
-          {showMoreMenu && (
-            <div className="mobile-more-menu" onClick={e => e.stopPropagation()}>
-              <button className="mobile-menu-item" onClick={() => { setShowTagSettings(true); setShowMoreMenu(false); }}>
-                <Users size={20} />
-                <span>Personalizzazione targhette</span>
-              </button>
-              <button className="mobile-menu-item" onClick={() => { setShowPlannerSheet(true); setShowMoreMenu(false); }}>
-                <CalendarIcon size={20} />
-                <span>Gestione menù</span>
+        {createPortal(
+          <div className={`mobile-tab-panel-portal ${isActive ? 'is-active' : ''}`}>
+            <div className="mobile-fab-container-left">
+              {showMoreMenu && (
+                <div className="mobile-more-menu" onClick={e => e.stopPropagation()}>
+                  <button className="mobile-menu-item" onClick={() => { setShowTagSettings(true); setShowMoreMenu(false); }}>
+                    <Users size={20} />
+                    <span>Personalizzazione targhette</span>
+                  </button>
+                  <button className="mobile-menu-item" onClick={() => { setShowPlannerSheet(true); setShowMoreMenu(false); }}>
+                    <CalendarIcon size={20} />
+                    <span>Gestione menù</span>
+                  </button>
+                </div>
+              )}
+              <button 
+                className={`mobile-fab-more ${showMoreMenu ? 'active' : ''}`}
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+              >
+                <MoreVertical size={28} />
               </button>
             </div>
-          )}
-          <button 
-            className={`mobile-fab-more ${showMoreMenu ? 'active' : ''}`}
-            onClick={() => setShowMoreMenu(!showMoreMenu)}
-          >
-            <MoreVertical size={28} />
-          </button>
-        </div>
 
-        {showTagSettings && (
-          <TagManagerModal 
-            tags={tags}
-            onAddTag={onAddTag}
-            onDeleteTag={onDeleteTag}
-            onClose={() => setShowTagSettings(false)}
-            hideCloseButton={isMobile}
-            closeOnOverlay={!isMobile}
-          />
-        )}
-
-        {showPlannerSheet && (
-          <div className="management-sheet-overlay">
-            <div
-              className="management-sheet-content"
-              onClick={e => e.stopPropagation()}
-              style={{ transform: plannerSheetTransform }}
-              {...plannerSheetHandlers}
-            >
-              <div className="bottom-sheet-drag-handle" />
-              <div className="management-sheet-header">
-                <h3><CalendarIcon size={24} /> Gestione Menù</h3>
-              </div>
-
-              <div className="management-sheet-body">
-                {activeWeekDays.length === 0 ? (
-                  <div className="f-empty-msg planner-management-empty">
-                    Nessuna settimana selezionata.
+            {showPlannerSheet && (
+              <div className="management-sheet-overlay">
+                <div
+                  className="management-sheet-content"
+                  onClick={e => e.stopPropagation()}
+                  style={{ transform: plannerSheetTransform }}
+                  {...plannerSheetHandlers}
+                >
+                  <div className="bottom-sheet-drag-handle" />
+                  <div className="management-sheet-header">
+                    <h3><CalendarIcon size={24} /> Gestione Menù</h3>
                   </div>
-                ) : (
-                  <div className="planner-summary-list">
-                    {activeWeekDays.map((dayDate) => {
-                      const dateKey = format(dayDate, 'yyyy-MM-dd');
-                      const dayName = format(dayDate, 'EEEE d MMM', { locale: it });
-                      const jsDay = dayDate.getDay();
-                      const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
-                      
-                      const dayMeals = MEALS.map(m => ({ meal: m, items: mealPlan[dateKey]?.[m.id] || [] }))
-                                          .filter(m => m.items.length > 0);
 
-                      return (
-                        <div key={dateKey} className="planner-sheet-day">
-                          <h4 className="planner-sheet-day-title" style={{ background: PASTEL_VARS[cssIndex] }}>
-                            {dayName}
-                          </h4>
-                          <div className="planner-sheet-meals">
-                            {dayMeals.length === 0 ? (
-                              <p className="m-no-meals">Nessun pasto inserito</p>
-                            ) : (
-                              dayMeals.map(({ meal, items }) => (
-                                <div key={meal.id} className="planner-sheet-meal-group">
-                                  <div className="planner-sheet-meal-label">
-                                    <meal.Icon size={14} /> {meal.label}
-                                  </div>
-                                  {items.map(item => {
-                                    const entryTags = item.assignees && item.assignees.length > 0 ? item.assignees : (item.assignee ? [item.assignee] : []);
-                                    return (
-                                      <div key={item.id} className="planner-sheet-item">
-                                        <span className="p-item-text">{item.text}</span>
-                                        <div className="p-item-tags">
-                                          {entryTags.slice(0, 2).map(a => (
-                                            <span key={a} className="p-item-tag" style={{ background: tags.find(t => t.label === a)?.color || tags.find(t => t.id === a)?.color }}>
-                                              {a}
-                                            </span>
-                                          ))}
-                                          {entryTags.length > 2 && (
-                                            <span className="p-item-tag p-item-tag-more">
-                                              +{entryTags.length - 2}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <button className="p-item-del" onClick={() => handleRemoveMealEntry(dateKey, meal.id, item.id)}>
-                                          <Trash2 size={14} />
-                                        </button>
+                  <div className="management-sheet-body">
+                    {activeWeekDays.length === 0 ? (
+                      <div className="f-empty-msg planner-management-empty">
+                        Nessuna settimana selezionata.
+                      </div>
+                    ) : (
+                      <div className="planner-summary-list">
+                        {activeWeekDays.map((dayDate) => {
+                          const dateKey = format(dayDate, 'yyyy-MM-dd');
+                          const dayName = format(dayDate, 'EEEE d MMM', { locale: it });
+                          const jsDay = dayDate.getDay();
+                          const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
+                          
+                          const dayMeals = MEALS.map(m => ({ meal: m, items: mealPlan[dateKey]?.[m.id] || [] }))
+                                              .filter(m => m.items.length > 0);
+
+                          return (
+                            <div key={dateKey} className="planner-sheet-day">
+                              <h4 className="planner-sheet-day-title" style={{ background: PASTEL_VARS[cssIndex] }}>
+                                {dayName}
+                              </h4>
+                              <div className="planner-sheet-meals">
+                                {dayMeals.length === 0 ? (
+                                  <p className="m-no-meals">Nessun pasto inserito</p>
+                                ) : (
+                                  dayMeals.map(({ meal, items }) => (
+                                    <div key={meal.id} className="planner-sheet-meal-group">
+                                      <div className="planner-sheet-meal-label">
+                                        <meal.Icon size={14} /> {meal.label}
                                       </div>
-                                    );
-                                  })}
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                                      {items.map(item => {
+                                        const entryTags = item.assignees && item.assignees.length > 0 ? item.assignees : (item.assignee ? [item.assignee] : []);
+                                        return (
+                                          <div key={item.id} className="planner-sheet-item">
+                                            <span className="p-item-text">{item.text}</span>
+                                            <div className="p-item-tags">
+                                              {entryTags.slice(0, 2).map(a => (
+                                                <span key={a} className="p-item-tag" style={{ background: tags.find(t => t.label === a)?.color || tags.find(t => t.id === a)?.color }}>
+                                                  {a}
+                                                </span>
+                                              ))}
+                                              {entryTags.length > 2 && (
+                                                <span className="p-item-tag p-item-tag-more">
+                                                  +{entryTags.length - 2}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <button className="p-item-del" onClick={() => handleRemoveMealEntry(dateKey, meal.id, item.id)}>
+                                              <Trash2 size={14} />
+                                            </button>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
-          </div>
+            )}
+          </div>,
+          document.body
         )}
       </div>
     );
