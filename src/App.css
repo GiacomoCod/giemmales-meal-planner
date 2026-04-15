@@ -1235,6 +1235,52 @@ body {
   gap: 1.5rem;
 }
 
+.layout-content.mobile-tab-layout,
+.layout-content.mobile-tab-layout.is-mobile {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.mobile-tab-viewport {
+  width: 100%;
+  overflow: hidden;
+  touch-action: pan-y pinch-zoom;
+  transition: height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-tab-track {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  position: relative;
+  will-change: margin-left;
+}
+
+.mobile-tab-track.is-dragging {
+  transition: none !important;
+}
+
+.mobile-tab-panel {
+  flex: 0 0 100%;
+  min-width: 100%;
+  max-width: 100%;
+}
+
+.mobile-tab-panel > * {
+  width: 100%;
+}
+
+/* Prevent fixed FABs inside panels from being stretched to 100% width by the rule above */
+.mobile-tab-panel > .mobile-fab-container-left {
+  width: max-content !important;
+}
+
+.mobile-tab-panel > .mobile-fab-add {
+  width: 64px !important;
+}
+
 .shopping-only {
   display: flex;
   justify-content: center;
@@ -4803,10 +4849,25 @@ button.assignee-badge:hover {
   justify-content: center;
   box-shadow: 0 12px 30px rgba(79, 70, 229, 0.4);
   z-index: 1000;
-  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease, opacity 0.3s ease, transform 0.3s ease;
   animation: none;
   transform: translateZ(0);
   will-change: auto;
+}
+
+/* FAB active/inactive states for mobile pager transitions */
+.mobile-tab-panel:not(.is-active) .mobile-fab-add,
+.mobile-tab-panel:not(.is-active) .mobile-fab-container-left {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85) translateZ(0);
+}
+
+.mobile-tab-panel.is-active .mobile-fab-add,
+.mobile-tab-panel.is-active .mobile-fab-container-left {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1) translateZ(0);
 }
 
 @keyframes fabPopIn {
@@ -4975,7 +5036,7 @@ button.assignee-badge:hover {
 }
 
 .room-detail-container {
-  min-height: 100vh;
+  min-height: 100%;
   padding: 0 0 100px 0;
 }
 
@@ -5332,6 +5393,7 @@ button.assignee-badge:hover {
   gap: 12px;
   transform: translateZ(0);
   will-change: auto;
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .mobile-fab-more {

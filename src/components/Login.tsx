@@ -6,6 +6,39 @@ import './Login.css';
 
 const selfSignupEnabled = import.meta.env.VITE_ENABLE_SELF_SIGNUP === 'true';
 
+const getAuthErrorMessage = (code?: string) => {
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Credenziali non valide. Riprova.';
+    case 'auth/email-already-in-use':
+      return 'Questo nome utente e gia in uso. Prova ad accedere.';
+    case 'auth/weak-password':
+      return 'Usa una password piu sicura (minimo 6 caratteri).';
+    case 'auth/invalid-email':
+      return 'Nome utente non valido.';
+    case 'auth/operation-not-allowed':
+      return "L'accesso con email e password non e abilitato su Firebase.";
+    case 'auth/network-request-failed':
+      return 'Problema di rete durante il login. Controlla la connessione e riprova.';
+    case 'auth/too-many-requests':
+      return 'Troppi tentativi di accesso. Attendi qualche minuto e riprova.';
+    case 'auth/invalid-api-key':
+      return 'Configurazione Firebase non valida in questa build.';
+    case 'auth/app-deleted':
+    case 'auth/invalid-app-credential':
+    case 'auth/configuration-not-found':
+      return 'Configurazione di autenticazione Firebase incompleta o non trovata.';
+    case 'auth/user-disabled':
+      return 'Questo account e stato disabilitato.';
+    default:
+      return code
+        ? `Errore durante l'autenticazione (${code}). Riprova.`
+        : "Errore durante l'autenticazione. Riprova.";
+  }
+};
+
 export function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
@@ -37,17 +70,7 @@ export function Login() {
       }
     } catch (err: any) {
       console.error("[AUTH ERROR]:", err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
-        setError('Credenziali non valide. Riprova.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setError('Questo nome utente è già in uso. Prova ad accedere.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('Usa una password più sicura (minimo 6 caratteri).');
-      } else if (err.code === 'auth/invalid-email') {
-        setError('Nome utente non valido.');
-      } else {
-        setError("Errore durante l'autenticazione. Riprova.");
-      }
+      setError(getAuthErrorMessage(err?.code));
     } finally {
       setLoading(false);
     }

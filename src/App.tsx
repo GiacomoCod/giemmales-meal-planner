@@ -19,6 +19,8 @@ import { buildRoomTaskKey, dedupeRoomTasks, hasRoomTask, sanitizeTaskName } from
 
 type AppTab = 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings';
 
+const TAB_ORDER: AppTab[] = ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
+
 const TAB_LABELS: Record<AppTab, string> = {
   home: 'Home',
   planner: 'Menù',
@@ -147,30 +149,6 @@ function App() {
   const [newItemText, setNewItemText] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeTab, setActiveTabState] = useState<AppTab>('home');
-  const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('left');
-
-  const preloadSection = useCallback((tab: AppTab) => {
-    void SECTION_PRELOADERS[tab]();
-  }, []);
-
-  const getTabLabel = useCallback((tab: AppTab) => TAB_LABELS[tab], []);
-
-  const setActiveTab = useCallback((newTab: AppTab, explicitDirection?: 'left' | 'right') => {
-    preloadSection(newTab);
-    if (explicitDirection) {
-      setSlideDirection(explicitDirection);
-    } else {
-      const allTabs: AppTab[] = ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
-      const prevIndex = allTabs.indexOf(activeTab);
-      const newIndex = allTabs.indexOf(newTab);
-      if (newIndex > prevIndex) {
-        setSlideDirection('left');
-      } else if (newIndex < prevIndex) {
-        setSlideDirection('right');
-      }
-    }
-    setActiveTabState(newTab);
-  }, [activeTab, preloadSection]);
   const [visibleSections, setVisibleSections] = useState<Record<string, boolean>>({
     planner: true,
     shopping: true,
@@ -178,6 +156,15 @@ function App() {
     cleaning: true,
     finance: true
   });
+  const availableTabs = useMemo(
+    () => TAB_ORDER.filter((tab) => tab === 'home' || tab === 'settings' || visibleSections[tab]),
+    [visibleSections]
+  );
+  const [loadedTabs, setLoadedTabs] = useState<AppTab[]>(['home']);
+  const [pagerDragOffset, setPagerDragOffset] = useState(0);
+  const [isPagerDragging, setIsPagerDragging] = useState(false);
+  const [isPagerTransitionEnabled, setIsPagerTransitionEnabled] = useState(true);
+  const [activePanelHeight, setActivePanelHeight] = useState<number | null>(null);
   const [recipes, setRecipes] = useState<Recipe[]>(DUMMY_RECIPES);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [isEditingRecipe, setIsEditingRecipe] = useState(false);
@@ -205,6 +192,60 @@ function App() {
   const undoTimeoutRef = useRef<any>(null);
   const hasSeededRef = useRef<Set<string>>(new Set());
   const uniqueRoomTasks = useMemo(() => dedupeRoomTasks(roomTasks), [roomTasks]);
+  const pagerViewportRef = useRef<HTMLDivElement>(null);
+  const pagerTransitionFrameRef = useRef<number | null>(null);
+  const pagerDragFrameRef = useRef<number | null>(null);
+  const pagerDragOffsetRef = useRef(0);
+  const pagerTouchStateRef = useRef<{
+    startX: number;
+    startY: number;
+    target: EventTarget | null;
+    isHorizontal: boolean;
+  } | null>(null);
+  const panelRefs = useRef<Partial<Record<AppTab, HTMLElement | null>>>({});
+  const tabScrollPositionsRef = useRef<Record<string, number>>({});
+  const previousActiveTabRef = useRef<AppTab>('home');
+
+  const preloadSection = useCallback((tab: AppTab) => {
+    void SECTION_PRELOADERS[tab]();
+  }, []);
+
+  const getTabLabel = useCallback((tab: AppTab) => TAB_LABELS[tab], []);
+
+  const markTabsLoaded = useCallback((tabs: AppTab[]) => {
+    setLoadedTabs((prev) => {
+      const next = new Set(prev);
+      tabs.forEach((tab) => next.add(tab));
+      return next.size === prev.length ? prev : Array.from(next);
+    });
+  }, []);
+
+  const setActiveTab = useCallback((newTab: AppTab, explicitDirection?: 'left' | 'right') => {
+    const currentIndex = availableTabs.indexOf(activeTab);
+    const nextIndex = availableTabs.indexOf(newTab);
+    const tabDistance =
+      currentIndex >= 0 && nextIndex >= 0
+        ? Math.abs(nextIndex - currentIndex)
+        : Math.abs(TAB_ORDER.indexOf(newTab) - TAB_ORDER.indexOf(activeTab));
+
+    preloadSection(newTab);
+
+    if (isMobile && !explicitDirection && tabDistance > 1) {
+      setIsPagerTransitionEnabled(false);
+      if (pagerTransitionFrameRef.current !== null) {
+        window.cancelAnimationFrame(pagerTransitionFrameRef.current);
+      }
+      pagerTransitionFrameRef.current = window.requestAnimationFrame(() => {
+        pagerTransitionFrameRef.current = window.requestAnimationFrame(() => {
+          setIsPagerTransitionEnabled(true);
+          pagerTransitionFrameRef.current = null;
+        });
+      });
+    }
+
+    markTabsLoaded([newTab]);
+    setActiveTabState(newTab);
+  }, [activeTab, availableTabs, isMobile, markTabsLoaded, preloadSection]);
 
   const preferredPrefetchTabs = useMemo(() => {
     const candidateMap: Record<AppTab, AppTab[]> = {
@@ -338,60 +379,189 @@ function App() {
   // Refs for closing dropdowns when clicking outside
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
-  const touchStartPos = useRef<{ x: number, y: number } | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
 
-  // Swipe Navigation Logic (Mobile Only)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (!isMobile || showNotifications) return;
-    const touch = e.touches[0];
-    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
-  };
+  const schedulePagerDragOffset = useCallback((nextValue: number) => {
+    pagerDragOffsetRef.current = nextValue;
+    if (pagerDragFrameRef.current !== null) return;
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!isMobile || !touchStartPos.current || showNotifications) return;
-    
-    // Don't swipe if we are in an input/textarea
-    const target = e.target as HTMLElement;
-    if (
-      target.tagName === 'INPUT' || 
-      target.tagName === 'TEXTAREA' || 
+    pagerDragFrameRef.current = window.requestAnimationFrame(() => {
+      pagerDragFrameRef.current = null;
+      setPagerDragOffset(pagerDragOffsetRef.current);
+    });
+  }, []);
+
+  const resetPagerDrag = useCallback(() => {
+    pagerTouchStateRef.current = null;
+    setIsPagerDragging(false);
+    setIsPagerTransitionEnabled(true);
+    schedulePagerDragOffset(0);
+  }, [schedulePagerDragOffset]);
+
+  const shouldIgnorePagerSwipe = useCallback((target: HTMLElement | null) => {
+    if (!target) return true;
+
+    return Boolean(
+      target.closest('input, textarea, select, [contenteditable="true"]') ||
       target.closest('.settings-form') ||
       target.closest('.bottom-sheet-content') ||
       target.closest('.calendar-scroll-wrapper') ||
       target.closest('.house-calendar-grid') ||
       target.closest('.nav-tabs') ||
-      target.closest('.horizontal-scroll')
-    ) {
-      touchStartPos.current = null;
+      target.closest('.horizontal-scroll') ||
+      target.closest('.bottom-nav') ||
+      target.closest('.bottom-nav-sheet') ||
+      target.closest('.mobile-notif-overlay')
+    );
+  }, []);
+
+  const handlePagerTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || showNotifications || e.touches.length !== 1) return;
+
+    const target = e.target as HTMLElement | null;
+    if (shouldIgnorePagerSwipe(target)) {
+      pagerTouchStateRef.current = null;
       return;
     }
 
-    const touch = e.changedTouches[0];
-    const deltaX = touch.clientX - touchStartPos.current.x;
-    const deltaY = touch.clientY - touchStartPos.current.y;
-    touchStartPos.current = null;
+    const touch = e.touches[0];
+    pagerTouchStateRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      target: e.target,
+      isHorizontal: false
+    };
+  }, [isMobile, shouldIgnorePagerSwipe, showNotifications]);
 
-    // Must be horizontal and significant
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 75) {
-      const allTabs: Array<'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings'> = 
-        ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance'];
-      const activeTabs = allTabs.filter(t => t === 'home' || visibleSections[t]);
-      
-      const currentIndex = activeTabs.indexOf(activeTab);
-      if (currentIndex === -1) return;
+  const handlePagerTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile || showNotifications || e.touches.length !== 1) return;
+    const touchState = pagerTouchStateRef.current;
+    if (!touchState) return;
 
-      if (deltaX > 0) {
-        // Swipe Right -> Go to Previous
-        const prevIndex = (currentIndex - 1 + activeTabs.length) % activeTabs.length;
-        setActiveTab(activeTabs[prevIndex], 'right');
-      } else {
-        // Swipe Left -> Go to Next
-        const nextIndex = (currentIndex + 1) % activeTabs.length;
-        setActiveTab(activeTabs[nextIndex], 'left');
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchState.startX;
+    const deltaY = touch.clientY - touchState.startY;
+    const activeTabIndex = availableTabs.indexOf(activeTab);
+    if (activeTabIndex === -1) return;
+
+    if (!touchState.isHorizontal) {
+      if (Math.abs(deltaY) > 12 && Math.abs(deltaY) > Math.abs(deltaX)) {
+        pagerTouchStateRef.current = null;
+        return;
+      }
+
+      if (Math.abs(deltaX) < 10 || Math.abs(deltaX) <= Math.abs(deltaY)) {
+        return;
+      }
+
+      touchState.isHorizontal = true;
+      setIsPagerDragging(true);
+      setIsPagerTransitionEnabled(false);
+    }
+
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+
+    const isAtFirstTab = activeTabIndex === 0;
+    const isAtLastTab = activeTabIndex === availableTabs.length - 1;
+    const resistedDeltaX =
+      (isAtFirstTab && deltaX > 0) || (isAtLastTab && deltaX < 0)
+        ? deltaX * 0.28
+        : deltaX;
+
+    schedulePagerDragOffset(resistedDeltaX);
+  }, [activeTab, availableTabs, isMobile, schedulePagerDragOffset, showNotifications]);
+
+  const handlePagerTouchEnd = useCallback(() => {
+    if (!isMobile || showNotifications) return;
+    const touchState = pagerTouchStateRef.current;
+    if (!touchState) return;
+
+    const activeTabIndex = availableTabs.indexOf(activeTab);
+    const pagerWidth = pagerViewportRef.current?.clientWidth ?? window.innerWidth;
+    const threshold = Math.min(Math.max(pagerWidth * 0.18, 60), 120);
+    const nextOffset = pagerDragOffsetRef.current;
+
+    if (touchState.isHorizontal && activeTabIndex !== -1 && Math.abs(nextOffset) > threshold) {
+      if (nextOffset > 0 && activeTabIndex > 0) {
+        resetPagerDrag();
+        setActiveTab(availableTabs[activeTabIndex - 1], 'right');
+        return;
+      }
+
+      if (nextOffset < 0 && activeTabIndex < availableTabs.length - 1) {
+        resetPagerDrag();
+        setActiveTab(availableTabs[activeTabIndex + 1], 'left');
+        return;
       }
     }
-  };
+
+    resetPagerDrag();
+  }, [activeTab, availableTabs, isMobile, resetPagerDrag, setActiveTab, showNotifications]);
+
+  useEffect(() => {
+    return () => {
+      if (pagerTransitionFrameRef.current !== null) {
+        window.cancelAnimationFrame(pagerTransitionFrameRef.current);
+      }
+      if (pagerDragFrameRef.current !== null) {
+        window.cancelAnimationFrame(pagerDragFrameRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const activeIndex = availableTabs.indexOf(activeTab);
+    if (activeIndex !== -1) return;
+
+    setActiveTabState('home');
+    setIsPagerTransitionEnabled(false);
+    schedulePagerDragOffset(0);
+    if (pagerTransitionFrameRef.current !== null) {
+      window.cancelAnimationFrame(pagerTransitionFrameRef.current);
+    }
+    pagerTransitionFrameRef.current = window.requestAnimationFrame(() => {
+      setIsPagerTransitionEnabled(true);
+      pagerTransitionFrameRef.current = null;
+    });
+  }, [activeTab, availableTabs, schedulePagerDragOffset]);
+
+  useEffect(() => {
+    const activeIndex = availableTabs.indexOf(activeTab);
+    const nearbyTabs = [
+      availableTabs[activeIndex - 1],
+      availableTabs[activeIndex],
+      availableTabs[activeIndex + 1]
+    ].filter(Boolean) as AppTab[];
+
+    if (nearbyTabs.length === 0) return;
+
+    markTabsLoaded(nearbyTabs);
+    nearbyTabs.forEach((tab) => preloadSection(tab));
+  }, [activeTab, availableTabs, markTabsLoaded, preloadSection]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setActivePanelHeight(null);
+      return;
+    }
+
+    const activePanel = panelRefs.current[activeTab];
+    if (!activePanel) return;
+
+    const updateHeight = () => {
+      setActivePanelHeight(activePanel.offsetHeight);
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(() => updateHeight());
+    observer.observe(activePanel);
+    return () => observer.disconnect();
+  }, [activeTab, isMobile, loadedTabs]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -412,6 +582,9 @@ function App() {
         scrollFrameRef.current = null;
         const nextIsScrolled = window.scrollY > 40;
         setIsScrolled(prev => (prev === nextIsScrolled ? prev : nextIsScrolled));
+        if (!showNotifications) {
+          tabScrollPositionsRef.current[activeTab] = window.scrollY;
+        }
       });
     };
 
@@ -427,7 +600,25 @@ function App() {
         scrollFrameRef.current = null;
       }
     };
-  }, [isMobile]);
+  }, [activeTab, isMobile, showNotifications]);
+
+  useEffect(() => {
+    if (!isMobile || showNotifications) {
+      previousActiveTabRef.current = activeTab;
+      return;
+    }
+
+    const previousTab = previousActiveTabRef.current;
+    if (previousTab === activeTab) return;
+
+    tabScrollPositionsRef.current[previousTab] = window.scrollY;
+    const nextScrollTop = tabScrollPositionsRef.current[activeTab] ?? 0;
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: nextScrollTop, left: 0, behavior: 'auto' });
+    });
+
+    previousActiveTabRef.current = activeTab;
+  }, [activeTab, isMobile, showNotifications]);
 
   const handleDeleteAllNotifications = async () => {
     try {
@@ -1003,7 +1194,7 @@ function App() {
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
 
-  const calendarDays = [];
+  const calendarDays: Date[] = [];
   let dayIterator = calendarStart;
   while (dayIterator <= calendarEnd) {
     calendarDays.push(dayIterator);
@@ -1422,6 +1613,181 @@ function App() {
     }
   };
 
+  const renderTabContent = (tab: AppTab) => {
+    if (tab === 'home') {
+      return (
+        <HomeSection
+          isMobile={isMobile}
+          userName={activeProfile.name}
+          mealPlan={mealPlan}
+          shoppingList={shoppingList}
+          recipes={recipes}
+          roomTasks={uniqueRoomTasks}
+          cleaningLogs={cleaningLogs}
+          taskSettings={taskSettings}
+          events={events}
+          tags={tags}
+          onAddEvent={handleAddEvent}
+          onDeleteEvent={handleDeleteEvent}
+          onNavigate={(nextTab) => setActiveTab(nextTab as AppTab)}
+          expenses={expenses}
+        />
+      );
+    }
+
+    if (tab === 'planner') {
+      return (
+        <PlannerSection
+          isMobile={isMobile}
+          currentMonth={currentMonth}
+          prevMonth={prevMonth}
+          nextMonth={nextMonth}
+          calendarDays={calendarDays}
+          selectedWeekStart={selectedWeekStart}
+          selectedWeekEnd={selectedWeekEnd}
+          monthStart={monthStart}
+          setSelectedWeekStart={setSelectedWeekStart}
+          setCurrentMonth={setCurrentMonth}
+          weekNotes={weekNotes}
+          isSavingNotes={isSavingNotes}
+          handleUpdateNotes={handleUpdateNotes}
+          activeWeekDays={activeWeekDays}
+          mealPlan={mealPlan}
+          handleAddMealEntry={handleAddMealEntry}
+          handleRemoveMealEntry={handleRemoveMealEntry}
+          handleUpdateAssignee={handleUpdateAssignee}
+          handleUpdateMealEntryText={handleUpdateMealEntryText}
+          tags={tags}
+          onAddTag={handleAddTag}
+          onDeleteTag={handleDeleteTag}
+        />
+      );
+    }
+
+    if (tab === 'shopping') {
+      return (
+        <ShoppingListSection
+          isMobile={isMobile}
+          shoppingList={shoppingList}
+          newItemText={newItemText}
+          setNewItemText={setNewItemText}
+          showSuggestions={showSuggestions}
+          setShowSuggestions={setShowSuggestions}
+          filteredSuggestions={filteredSuggestions}
+          handleAddItem={handleAddItem}
+          handleAddSuggestion={handleAddSuggestion}
+          toggleItem={toggleItem}
+          deleteItem={deleteItem}
+          suggestions={suggestions}
+          onAddCustomSuggestion={(text, cat, icon) => {
+            const newSug = { text, category: cat, icon: icon || '📦' };
+            setSuggestions(prev => [...prev, newSug]);
+          }}
+          onDeleteCustomSuggestion={(text) => {
+            setSuggestions(prev => prev.filter(s => s.text !== text));
+          }}
+        />
+      );
+    }
+
+    if (tab === 'recipes') {
+      return (
+        <RecipesSection
+          isMobile={isMobile}
+          recipes={recipes}
+          handleRecipeClick={handleRecipeClick}
+          handleAddNewRecipe={handleAddNewRecipe}
+          handleDeleteRecipe={handleDeleteRecipe}
+          selectedRecipe={selectedRecipe}
+          setSelectedRecipe={setSelectedRecipe}
+          isEditingRecipe={isEditingRecipe}
+          setIsEditingRecipe={setIsEditingRecipe}
+          tempRecipe={tempRecipe}
+          setTempRecipe={setTempRecipe}
+          handleImageUpload={handleImageUpload}
+          handleSaveRecipe={handleSaveRecipe}
+          tags={tags}
+          onAddTag={handleAddTag}
+          onDeleteTag={handleDeleteTag}
+        />
+      );
+    }
+
+    if (tab === 'cleaning') {
+      return (
+        <CleaningSection
+          currentMonth={currentMonth}
+          prevMonth={prevMonth}
+          nextMonth={nextMonth}
+          calendarDays={calendarDays}
+          selectedWeekStart={selectedWeekStart}
+          selectedWeekEnd={selectedWeekEnd}
+          monthStart={monthStart}
+          setSelectedWeekStart={setSelectedWeekStart}
+          setCurrentMonth={setCurrentMonth}
+          cleaningNotes={cleaningNotes}
+          isSavingCleaningNotes={isSavingCleaningNotes}
+          handleUpdateCleaningNotes={handleUpdateCleaningNotes}
+          selectedRoom={selectedRoom}
+          setSelectedRoom={setSelectedRoom}
+          showAddTask={showAddTask}
+          setShowAddTask={setShowAddTask}
+          newTaskName={newTaskName}
+          setNewTaskName={setNewTaskName}
+          handleAddTask={handleAddTask}
+          roomTasks={uniqueRoomTasks}
+          cleaningLogs={cleaningLogs}
+          handleDeleteRoomTask={handleDeleteRoomTask}
+          handleCompleteTask={handleCompleteTask}
+          handleUpdateCleaningLog={handleUpdateCleaningLog}
+          handleDeleteCleaningLog={handleDeleteCleaningLog}
+          taskSettings={taskSettings}
+          showTaskSettings={showTaskSettings}
+          setShowTaskSettings={setShowTaskSettings}
+          editingFrequency={editingFrequency}
+          setEditingFrequency={setEditingFrequency}
+          handleUpdateTaskFrequency={handleUpdateTaskFrequency}
+          isMobile={isMobile}
+          tags={tags}
+          onAddTag={handleAddTag}
+          onDeleteTag={handleDeleteTag}
+        />
+      );
+    }
+
+    if (tab === 'finance') {
+      return (
+        <div className="main-content finance-section-container">
+          <FinanceSection
+            expenses={expenses}
+            tags={tags}
+            onAddExpense={handleAddExpense}
+            onDeleteExpense={handleDeleteExpense}
+            onAddTag={handleAddTag}
+            onDeleteTag={handleDeleteTag}
+            isMobile={isMobile}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <SettingsSection
+        user={user}
+        isGiemmale={isGiemmale}
+        activeProfile={activeProfile}
+        visibleSections={visibleSections}
+        onToggleSection={handleToggleSection}
+        isMobile={isMobile}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={handleToggleDarkMode}
+      />
+    );
+  };
+
+  const activeTabIndex = availableTabs.indexOf(activeTab);
+  const mobilePagerOffset = `calc(${-Math.max(activeTabIndex, 0) * 100}% + ${pagerDragOffset}px)`;
+
   if (isAuthLoading) {
     return (
       <div className="full-screen-skeleton skeleton-box">
@@ -1438,11 +1804,7 @@ function App() {
   }
 
   return (
-    <div 
-      className={`app-wrapper ${isMobile ? 'is-mobile' : ''}`}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div className={`app-wrapper ${isMobile ? 'is-mobile' : ''}`}>
       {/* Mobile Top Header */}
       {isMobile && (
         <header className={`mobile-header ${isScrolled ? 'is-scrolled' : ''}`}>
@@ -1800,7 +2162,7 @@ function App() {
       )}
 
       <div className={`layout ${isMobile ? 'is-mobile' : ''}`}>
-        <div className={`layout-content ${isMobile ? `mobile-page-transition-${slideDirection}` : ''}`}>
+        <div className={`layout-content ${isMobile ? 'is-mobile mobile-tab-layout' : ''}`}>
           {isDataLoading ? (
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div className="skeleton-box" style={{ width: '40%', height: '40px' }} />
@@ -1809,158 +2171,42 @@ function App() {
             </div>
           ) : (
             <Suspense fallback={<SectionFallback />}>
-              {activeTab === 'home' && (
-            <HomeSection
-              isMobile={isMobile}
-              userName={activeProfile.name}
-              mealPlan={mealPlan}
-              shoppingList={shoppingList}
-              recipes={recipes}
-              roomTasks={uniqueRoomTasks}
-              cleaningLogs={cleaningLogs}
-              taskSettings={taskSettings}
-              events={events}
-              tags={tags}
-              onAddEvent={handleAddEvent}
-              onDeleteEvent={handleDeleteEvent}
-              onNavigate={(tab) => setActiveTab(tab as 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings')}
-              expenses={expenses}
-            />
-          )}
-
-          {activeTab === 'planner' && (
-          <PlannerSection
-            isMobile={isMobile}
-            currentMonth={currentMonth}
-            prevMonth={prevMonth}
-            nextMonth={nextMonth}
-            calendarDays={calendarDays}
-            selectedWeekStart={selectedWeekStart}
-            selectedWeekEnd={selectedWeekEnd}
-            monthStart={monthStart}
-            setSelectedWeekStart={setSelectedWeekStart}
-            setCurrentMonth={setCurrentMonth}
-            weekNotes={weekNotes}
-            isSavingNotes={isSavingNotes}
-            handleUpdateNotes={handleUpdateNotes}
-            activeWeekDays={activeWeekDays}
-            mealPlan={mealPlan}
-            handleAddMealEntry={handleAddMealEntry}
-            handleRemoveMealEntry={handleRemoveMealEntry}
-            handleUpdateAssignee={handleUpdateAssignee}
-            handleUpdateMealEntryText={handleUpdateMealEntryText}
-            tags={tags}
-            onAddTag={handleAddTag}
-            onDeleteTag={handleDeleteTag}
-          />
-        )}
-        {activeTab === 'shopping' && (
-          <ShoppingListSection
-            isMobile={isMobile}
-            shoppingList={shoppingList}
-            newItemText={newItemText}
-            setNewItemText={setNewItemText}
-            showSuggestions={showSuggestions}
-            setShowSuggestions={setShowSuggestions}
-            filteredSuggestions={filteredSuggestions}
-            handleAddItem={handleAddItem}
-            handleAddSuggestion={handleAddSuggestion}
-            toggleItem={toggleItem}
-            deleteItem={deleteItem}
-            suggestions={suggestions}
-            onAddCustomSuggestion={(text, cat, icon) => {
-              const newSug = { text, category: cat, icon: icon || '📦' };
-              setSuggestions(prev => [...prev, newSug]);
-            }}
-            onDeleteCustomSuggestion={(text) => {
-              setSuggestions(prev => prev.filter(s => s.text !== text));
-            }}
-          />
-        )}
-        {activeTab === 'recipes' && (
-          <RecipesSection
-            isMobile={isMobile}
-            recipes={recipes}
-            handleRecipeClick={handleRecipeClick}
-            handleAddNewRecipe={handleAddNewRecipe}
-            handleDeleteRecipe={handleDeleteRecipe}
-            selectedRecipe={selectedRecipe}
-            setSelectedRecipe={setSelectedRecipe}
-            isEditingRecipe={isEditingRecipe}
-            setIsEditingRecipe={setIsEditingRecipe}
-            tempRecipe={tempRecipe}
-            setTempRecipe={setTempRecipe}
-            handleImageUpload={handleImageUpload}
-            handleSaveRecipe={handleSaveRecipe}
-            tags={tags}
-            onAddTag={handleAddTag}
-            onDeleteTag={handleDeleteTag}
-          />
-        )}
-        {activeTab === 'cleaning' && (
-          <CleaningSection
-            currentMonth={currentMonth}
-            prevMonth={prevMonth}
-            nextMonth={nextMonth}
-            calendarDays={calendarDays}
-            selectedWeekStart={selectedWeekStart}
-            selectedWeekEnd={selectedWeekEnd}
-            monthStart={monthStart}
-            setSelectedWeekStart={setSelectedWeekStart}
-            setCurrentMonth={setCurrentMonth}
-            cleaningNotes={cleaningNotes}
-            isSavingCleaningNotes={isSavingCleaningNotes}
-            handleUpdateCleaningNotes={handleUpdateCleaningNotes}
-            selectedRoom={selectedRoom}
-            setSelectedRoom={setSelectedRoom}
-            showAddTask={showAddTask}
-            setShowAddTask={setShowAddTask}
-            newTaskName={newTaskName}
-            setNewTaskName={setNewTaskName}
-            handleAddTask={handleAddTask}
-            roomTasks={uniqueRoomTasks}
-            cleaningLogs={cleaningLogs}
-            handleDeleteRoomTask={handleDeleteRoomTask}
-            handleCompleteTask={handleCompleteTask}
-            handleUpdateCleaningLog={handleUpdateCleaningLog}
-            handleDeleteCleaningLog={handleDeleteCleaningLog}
-            taskSettings={taskSettings}
-            showTaskSettings={showTaskSettings}
-            setShowTaskSettings={setShowTaskSettings}
-            editingFrequency={editingFrequency}
-            setEditingFrequency={setEditingFrequency}
-            handleUpdateTaskFrequency={handleUpdateTaskFrequency}
-            isMobile={isMobile}
-            tags={tags}
-            onAddTag={handleAddTag}
-            onDeleteTag={handleDeleteTag}
-          />
-        )}
-        {activeTab === 'finance' && (
-          <div className="main-content finance-section-container">
-            <FinanceSection
-              expenses={expenses}
-              tags={tags}
-              onAddExpense={handleAddExpense}
-              onDeleteExpense={handleDeleteExpense}
-              onAddTag={handleAddTag}
-              onDeleteTag={handleDeleteTag}
-              isMobile={isMobile}
-            />
-          </div>
-        )}
-        {activeTab === 'settings' && (
-          <SettingsSection 
-            user={user} 
-            isGiemmale={isGiemmale} 
-            activeProfile={activeProfile}
-            visibleSections={visibleSections}
-            onToggleSection={handleToggleSection}
-            isMobile={isMobile}
-            isDarkMode={isDarkMode}
-            onToggleDarkMode={handleToggleDarkMode}
-          />
-        )}
+              {isMobile ? (
+                <div
+                  ref={pagerViewportRef}
+                  className="mobile-tab-viewport"
+                  style={activePanelHeight ? { height: activePanelHeight } : undefined}
+                  onTouchStart={handlePagerTouchStart}
+                  onTouchMove={handlePagerTouchMove}
+                  onTouchEnd={handlePagerTouchEnd}
+                  onTouchCancel={handlePagerTouchEnd}
+                >
+                  <div
+                    className={`mobile-tab-track ${isPagerDragging ? 'is-dragging' : ''}`}
+                    style={{
+                      marginLeft: mobilePagerOffset,
+                      transition: isPagerDragging || !isPagerTransitionEnabled
+                        ? 'none'
+                        : 'margin-left 0.34s cubic-bezier(0.22, 1, 0.36, 1)'
+                    }}
+                  >
+                    {availableTabs.map((tab) => (
+                      <section
+                        key={tab}
+                        ref={(node) => {
+                          panelRefs.current[tab] = node;
+                        }}
+                        className={`mobile-tab-panel ${activeTab === tab ? 'is-active' : ''}`}
+                        aria-hidden={activeTab !== tab}
+                      >
+                        {loadedTabs.includes(tab) ? renderTabContent(tab) : <SectionFallback />}
+                      </section>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                renderTabContent(activeTab)
+              )}
         </Suspense>
       )}
       </div>

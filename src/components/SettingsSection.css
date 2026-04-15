@@ -1,6 +1,6 @@
 .settings-section {
   padding: 1.5rem;
-  min-height: calc(100vh - 160px);
+  min-height: 100%;
 }
 
 .settings-section.is-mobile {
@@ -29,7 +29,7 @@
   box-shadow: none;
   border-radius: 0;
   background: transparent;
-  min-height: calc(100vh - 150px);
+  min-height: 100%;
 }
 
 .settings-header {

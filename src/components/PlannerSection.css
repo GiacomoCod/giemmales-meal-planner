@@ -219,7 +219,7 @@
 /* Planner Mobile Container */
 .planner-mobile {
   background: var(--bg-color);
-  min-height: calc(100vh - 140px);
+  min-height: 100%;
   padding-bottom: 80px;
 }
 
