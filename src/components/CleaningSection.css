@@ -166,11 +166,17 @@
 
 /* Responsive */
 @media (max-width: 900px) {
+  .cleaning-section {
+    padding: 16px;
+  }
+
   .cleaning-hero {
     flex-direction: column;
-    padding: 30px 20px;
+    padding: 28px 22px;
     text-align: center;
     gap: 20px;
+    margin: 40px 0 0;
+    border-radius: 28px;
   }
   
   .cleaning-hero-header-content {
@@ -188,5 +194,9 @@
   
   .floating-kit-wrapper {
     width: 200px;
+  }
+
+  .rooms-grid.is-mobile {
+    margin-top: 16px;
   }
 }

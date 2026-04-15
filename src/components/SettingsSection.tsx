@@ -13,6 +13,8 @@ import {
   AlertTriangle, 
   CheckCircle, 
   ChevronRight, 
+  ChevronUp,
+  ChevronDown,
   ArrowLeft,
   Palette,
   ShieldCheck,
@@ -24,6 +26,8 @@ import {
   Bell
 } from 'lucide-react';
 import './SettingsSection.css';
+
+type ReorderableSectionId = 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance';
 
 type PushNotificationKey = 'events' | 'cleaning' | 'shopping' | 'weeklyMenu';
 type PushNotificationPreferences = Record<PushNotificationKey, boolean>;
@@ -54,7 +58,9 @@ interface SettingsSectionProps {
   isGiemmale: boolean;
   activeProfile: { id: string; name: string; title: string; isGiemmale?: boolean };
   visibleSections: Record<string, boolean>;
+  tabOrder: ReorderableSectionId[];
   onToggleSection: (sectionId: string) => void;
+  onMoveSection: (sectionId: ReorderableSectionId, direction: 'up' | 'down') => void;
   isMobile: boolean;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -65,7 +71,9 @@ export function SettingsSection({
   isGiemmale, 
   activeProfile, 
   visibleSections, 
+  tabOrder,
   onToggleSection, 
+  onMoveSection,
   isMobile,
   isDarkMode,
   onToggleDarkMode
@@ -372,6 +380,61 @@ export function SettingsSection({
                 <div className="toggle-switch"></div>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="customization-group">
+          <h3>Ordine Schede Mobile</h3>
+          <p className="section-desc">
+            Questo ordine viene usato sia nella navbar mobile sia nello swipe orizzontale tra le schermate.
+          </p>
+          <div className="section-order-list">
+            {tabOrder.map((section, index) => {
+              const Icon =
+                section === 'planner' ? CalendarIcon :
+                section === 'shopping' ? ShoppingCart :
+                section === 'recipes' ? BookOpen :
+                section === 'cleaning' ? Sparkles :
+                Wallet;
+              const label =
+                section === 'planner' ? 'Menù' :
+                section === 'shopping' ? 'Spesa' :
+                section === 'recipes' ? 'Ricette' :
+                section === 'cleaning' ? 'Pulizie' :
+                'Finanze';
+
+              return (
+                <div key={section} className={`order-item ${visibleSections[section] ? '' : 'is-hidden'}`}>
+                  <div className="order-item-left">
+                    <div className={`section-icon-box ${section}`}><Icon size={18} /></div>
+                    <div className="toggle-info">
+                      <span>{label}</span>
+                      <small>{visibleSections[section] ? 'Visibile nello swipe' : 'Nascosta, ma ordine mantenuto'}</small>
+                    </div>
+                  </div>
+                  <div className="order-actions">
+                    <button
+                      type="button"
+                      className="order-action-btn"
+                      onClick={() => onMoveSection(section, 'up')}
+                      disabled={index === 0}
+                      aria-label={`Sposta ${label} verso l'alto`}
+                    >
+                      <ChevronUp size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="order-action-btn"
+                      onClick={() => onMoveSection(section, 'down')}
+                      disabled={index === tabOrder.length - 1}
+                      aria-label={`Sposta ${label} verso il basso`}
+                    >
+                      <ChevronDown size={16} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

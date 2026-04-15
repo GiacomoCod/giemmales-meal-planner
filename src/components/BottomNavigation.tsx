@@ -26,35 +26,37 @@ interface BottomNavigationProps {
   preloadTab?: (tab: NavigationTab) => void;
   notificationsCount: number;
   visibleSections: Record<string, boolean>;
+  orderedTabs: NavigationTab[];
 }
-
-const PRIMARY_TABS: NavigationItem[] = [
-  { id: 'home', label: 'Home', icon: Home },
-  { id: 'planner', label: 'Menù', icon: CalendarIcon },
-  { id: 'cleaning', label: 'Pulizie', icon: Sparkles }
-];
-
-const SECONDARY_TABS: NavigationItem[] = [
-  { id: 'shopping', label: 'Spesa', icon: ShoppingCart },
-  { id: 'recipes', label: 'Ricette', icon: BookOpen },
-  { id: 'finance', label: 'Finanze', icon: Wallet },
-  { id: 'settings', label: 'Impostazioni', icon: Settings }
-];
+const NAV_ITEMS: Record<NavigationTab, NavigationItem> = {
+  home: { id: 'home', label: 'Home', icon: Home },
+  planner: { id: 'planner', label: 'Menù', icon: CalendarIcon },
+  shopping: { id: 'shopping', label: 'Spesa', icon: ShoppingCart },
+  recipes: { id: 'recipes', label: 'Ricette', icon: BookOpen },
+  cleaning: { id: 'cleaning', label: 'Pulizie', icon: Sparkles },
+  finance: { id: 'finance', label: 'Finanze', icon: Wallet },
+  settings: { id: 'settings', label: 'Impostazioni', icon: Settings }
+};
 
 export const BottomNavigation: React.FC<BottomNavigationProps> = ({ 
   activeTab, 
   setActiveTab,
   preloadTab,
   notificationsCount,
-  visibleSections
+  visibleSections,
+  orderedTabs
 }) => {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
-  const primaryTabs = PRIMARY_TABS.filter((tab) => tab.id === 'home' || visibleSections[tab.id]);
+  const orderedMainTabs = useMemo(
+    () => orderedTabs.filter((tab) => tab !== 'settings' && (tab === 'home' || visibleSections[tab])).map((tab) => NAV_ITEMS[tab]),
+    [orderedTabs, visibleSections]
+  );
 
+  const primaryTabs = orderedMainTabs.slice(0, 3);
   const secondaryTabs = useMemo(
-    () => SECONDARY_TABS.filter((tab) => tab.id === 'settings' || visibleSections[tab.id]),
-    [visibleSections]
+    () => [...orderedMainTabs.slice(3), NAV_ITEMS.settings],
+    [orderedMainTabs]
   );
 
   const isMoreActive = secondaryTabs.some(tab => tab.id === activeTab);

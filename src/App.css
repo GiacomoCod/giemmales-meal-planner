@@ -1243,11 +1243,24 @@ body {
   overflow: hidden;
 }
 
+html.pager-gesture-lock,
+html.pager-gesture-lock body {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+}
+
 .mobile-tab-viewport {
   width: 100%;
   overflow: hidden;
   touch-action: pan-y pinch-zoom;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: contain;
   transition: height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-tab-viewport.is-dragging {
+  touch-action: none;
 }
 
 .mobile-tab-track {
@@ -1255,17 +1268,37 @@ body {
   align-items: flex-start;
   width: 100%;
   position: relative;
-  will-change: margin-left;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
 }
 
 .mobile-tab-track.is-dragging {
   transition: none !important;
 }
 
+.mobile-tab-viewport.is-dragging .mobile-tab-panel,
+.mobile-tab-viewport.is-dragging .mobile-tab-panel > * {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .mobile-tab-panel {
   flex: 0 0 100%;
   min-width: 100%;
   max-width: 100%;
+  overflow-x: hidden;
+  contain: layout paint style;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.mobile-tab-panel.is-dormant {
+  visibility: hidden;
+}
+
+.mobile-tab-panel.is-dormant > * {
+  pointer-events: none;
 }
 
 .mobile-tab-panel > * {

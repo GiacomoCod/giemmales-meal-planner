@@ -18,6 +18,7 @@ import { PerformanceHUD } from './components/PerformanceHUD';
 import { buildRoomTaskKey, dedupeRoomTasks, hasRoomTask, sanitizeTaskName } from './utils/cleaningTasks';
 
 type AppTab = 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings';
+type ReorderableAppTab = Exclude<AppTab, 'home' | 'settings'>;
 type Suggestion = {
   text: string;
   icon: string;
@@ -28,7 +29,7 @@ type RecipeSaveError = {
   message?: string;
 };
 
-const TAB_ORDER: AppTab[] = ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
+const DEFAULT_TAB_ORDER: ReorderableAppTab[] = ['planner', 'cleaning', 'shopping', 'recipes', 'finance'];
 
 const TAB_LABELS: Record<AppTab, string> = {
   home: 'Home',
@@ -38,6 +39,22 @@ const TAB_LABELS: Record<AppTab, string> = {
   cleaning: 'Pulizie',
   finance: 'Finanze',
   settings: 'Impostazioni'
+};
+
+const normalizeTabOrder = (rawValue: unknown): ReorderableAppTab[] => {
+  if (!Array.isArray(rawValue)) return [...DEFAULT_TAB_ORDER];
+
+  const nextOrder = rawValue.filter((tab): tab is ReorderableAppTab =>
+    typeof tab === 'string' && DEFAULT_TAB_ORDER.includes(tab as ReorderableAppTab)
+  );
+
+  for (const tab of DEFAULT_TAB_ORDER) {
+    if (!nextOrder.includes(tab)) {
+      nextOrder.push(tab);
+    }
+  }
+
+  return nextOrder;
 };
 
 const loadHomeSection = () => import('./components/HomeSection');
@@ -169,9 +186,10 @@ function App() {
     cleaning: true,
     finance: true
   });
-  const availableTabs = useMemo(
-    () => TAB_ORDER.filter((tab) => tab === 'home' || tab === 'settings' || visibleSections[tab]),
-    [visibleSections]
+  const [tabOrder, setTabOrder] = useState<ReorderableAppTab[]>(() => [...DEFAULT_TAB_ORDER]);
+  const availableTabs = useMemo<AppTab[]>(
+    () => ['home', ...tabOrder.filter((tab) => visibleSections[tab]), 'settings'],
+    [tabOrder, visibleSections]
   );
   const [loadedTabs, setLoadedTabs] = useState<AppTab[]>(['home']);
   const [pagerDragOffset, setPagerDragOffset] = useState(0);
@@ -213,7 +231,8 @@ function App() {
     startX: number;
     startY: number;
     target: EventTarget | null;
-    isHorizontal: boolean;
+    axis: 'pending' | 'horizontal' | 'vertical';
+    startScrollY: number;
   } | null>(null);
   const panelRefs = useRef<Partial<Record<AppTab, HTMLElement | null>>>({});
   const tabScrollPositionsRef = useRef<Record<string, number>>({});
@@ -239,7 +258,7 @@ function App() {
     const tabDistance =
       currentIndex >= 0 && nextIndex >= 0
         ? Math.abs(nextIndex - currentIndex)
-        : Math.abs(TAB_ORDER.indexOf(newTab) - TAB_ORDER.indexOf(activeTab));
+        : Math.abs(availableTabs.indexOf(newTab) - availableTabs.indexOf(activeTab));
 
     preloadSection(newTab);
 
@@ -261,18 +280,18 @@ function App() {
   }, [activeTab, availableTabs, isMobile, markTabsLoaded, preloadSection]);
 
   const preferredPrefetchTabs = useMemo(() => {
-    const candidateMap: Record<AppTab, AppTab[]> = {
-      home: ['planner', 'shopping'],
-      planner: ['shopping', 'home'],
-      shopping: ['recipes', 'home'],
-      recipes: ['shopping', 'home'],
-      cleaning: ['home', 'settings'],
-      finance: ['home', 'settings'],
-      settings: ['home', 'finance']
-    };
+    const activeIndex = availableTabs.indexOf(activeTab);
+    if (activeIndex === -1) return [];
 
-    return candidateMap[activeTab].filter((tab) => tab === 'home' || tab === 'settings' || visibleSections[tab]);
-  }, [activeTab, visibleSections]);
+    return [
+      availableTabs[activeIndex - 1],
+      availableTabs[activeIndex + 1],
+      activeTab !== 'home' ? 'home' : availableTabs[activeIndex + 2],
+      'settings'
+    ].filter((tab, index, array): tab is AppTab =>
+      Boolean(tab) && tab !== activeTab && array.indexOf(tab) === index
+    );
+  }, [activeTab, availableTabs]);
 
   useEffect(() => {
     const tabsToPrefetch = preferredPrefetchTabs.slice(0, 2);
@@ -442,7 +461,8 @@ function App() {
       startX: touch.clientX,
       startY: touch.clientY,
       target: e.target,
-      isHorizontal: false
+      axis: 'pending',
+      startScrollY: window.scrollY
     };
   }, [isMobile, shouldIgnorePagerSwipe, showNotifications]);
 
@@ -457,20 +477,28 @@ function App() {
     const activeTabIndex = availableTabs.indexOf(activeTab);
     if (activeTabIndex === -1) return;
 
-    if (!touchState.isHorizontal) {
-      if (Math.abs(deltaY) > 12 && Math.abs(deltaY) > Math.abs(deltaX)) {
+    if (touchState.axis === 'pending') {
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+
+      if (absDeltaY > 6 && absDeltaY >= absDeltaX) {
+        touchState.axis = 'vertical';
         pagerTouchStateRef.current = null;
         return;
       }
 
-      if (Math.abs(deltaX) < 10 || Math.abs(deltaX) <= Math.abs(deltaY)) {
-        return;
+      if (absDeltaX >= 6 && absDeltaX > absDeltaY * 1.1) {
+        touchState.axis = 'horizontal';
+        setIsPagerDragging(true);
+        setIsPagerTransitionEnabled(false);
       }
 
-      touchState.isHorizontal = true;
-      setIsPagerDragging(true);
-      setIsPagerTransitionEnabled(false);
+      if (touchState.axis !== 'horizontal') {
+        return;
+      }
     }
+
+    if (touchState.axis !== 'horizontal') return;
 
     if (e.cancelable) {
       e.preventDefault();
@@ -496,7 +524,7 @@ function App() {
     const threshold = Math.min(Math.max(pagerWidth * 0.18, 60), 120);
     const nextOffset = pagerDragOffsetRef.current;
 
-    if (touchState.isHorizontal && activeTabIndex !== -1 && Math.abs(nextOffset) > threshold) {
+    if (touchState.axis === 'horizontal' && activeTabIndex !== -1 && Math.abs(nextOffset) > threshold) {
       if (nextOffset > 0 && activeTabIndex > 0) {
         resetPagerDrag();
         setActiveTab(availableTabs[activeTabIndex - 1], 'right');
@@ -560,6 +588,90 @@ function App() {
     nearbyTabs.forEach((tab) => preloadSection(tab));
     return () => window.clearTimeout(timeoutId);
   }, [activeTab, availableTabs, markTabsLoaded, preloadSection]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+
+    const tabsToWarm = availableTabs.filter((tab) => !loadedTabs.includes(tab));
+    if (tabsToWarm.length === 0) return;
+
+    let timeoutId: number | null = null;
+    let idleId: number | null = null;
+
+    const warmTabs = () => {
+      tabsToWarm.forEach((tab, index) => {
+        window.setTimeout(() => preloadSection(tab), index * 80);
+      });
+
+      window.setTimeout(() => {
+        markTabsLoaded(tabsToWarm);
+      }, Math.max(80, tabsToWarm.length * 80));
+    };
+
+    const requestIdle = window.requestIdleCallback?.bind(window);
+    const cancelIdle = window.cancelIdleCallback?.bind(window);
+
+    if (requestIdle) {
+      idleId = requestIdle(warmTabs, { timeout: 900 });
+    } else {
+      timeoutId = window.setTimeout(warmTabs, 220);
+    }
+
+    return () => {
+      if (idleId !== null && cancelIdle) {
+        cancelIdle(idleId);
+      }
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [availableTabs, isMobile, loadedTabs, markTabsLoaded, preloadSection]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const scrollY = pagerTouchStateRef.current?.startScrollY ?? window.scrollY;
+
+    const preventTouchMove = (event: TouchEvent) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    if (isPagerDragging) {
+      root.classList.add('pager-gesture-lock');
+      body.style.position = 'fixed';
+      body.style.top = `-${scrollY}px`;
+      body.style.left = '0';
+      body.style.right = '0';
+      body.style.width = '100%';
+      document.addEventListener('touchmove', preventTouchMove, { passive: false });
+    } else {
+      root.classList.remove('pager-gesture-lock');
+      const lockedTop = body.style.top;
+      body.style.position = '';
+      body.style.top = '';
+      body.style.left = '';
+      body.style.right = '';
+      body.style.width = '';
+      document.removeEventListener('touchmove', preventTouchMove);
+
+      if (lockedTop) {
+        const restoreY = Math.abs(parseInt(lockedTop, 10)) || 0;
+        window.scrollTo(0, restoreY);
+      }
+    }
+
+    return () => {
+      root.classList.remove('pager-gesture-lock');
+      body.style.position = '';
+      body.style.top = '';
+      body.style.left = '';
+      body.style.right = '';
+      body.style.width = '';
+      document.removeEventListener('touchmove', preventTouchMove);
+    };
+  }, [isPagerDragging]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -701,6 +813,7 @@ function App() {
         if (snap.exists()) {
           const data = snap.data();
           if (data.visibleSections) setVisibleSections(data.visibleSections);
+          if (data.tabOrder) setTabOrder(normalizeTabOrder(data.tabOrder));
           if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
         }
       } catch (error) {
@@ -743,6 +856,28 @@ function App() {
       }, { merge: true });
     } catch (err) {
       console.error("Error saving dark mode:", err);
+    }
+  };
+
+  const handleMoveSection = async (sectionId: ReorderableAppTab, direction: 'up' | 'down') => {
+    const previousOrder = [...tabOrder];
+    const currentIndex = previousOrder.indexOf(sectionId);
+    if (currentIndex === -1) return;
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= previousOrder.length) return;
+
+    const newOrder = [...previousOrder];
+    [newOrder[currentIndex], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[currentIndex]];
+    setTabOrder(newOrder);
+
+    try {
+      await setDoc(doc(db, `profiles/${activeProfile.id}/metadata`, 'settings'), {
+        tabOrder: newOrder
+      }, { merge: true });
+    } catch (err) {
+      console.error('Error saving tab order:', err);
+      setTabOrder(previousOrder);
     }
   };
 
@@ -1807,7 +1942,9 @@ function App() {
         isGiemmale={isGiemmale}
         activeProfile={activeProfile}
         visibleSections={visibleSections}
+        tabOrder={tabOrder}
         onToggleSection={handleToggleSection}
+        onMoveSection={handleMoveSection}
         isMobile={isMobile}
         isDarkMode={isDarkMode}
         onToggleDarkMode={handleToggleDarkMode}
@@ -2049,11 +2186,21 @@ function App() {
           <div className="nav-tabs">
             {([
               { id: 'home', label: getTabLabel('home'), icon: Home },
-              { id: 'planner', label: 'Calendario Menù', icon: CalendarIcon },
-              { id: 'shopping', label: 'Lista Spesa', icon: ShoppingCart },
-              { id: 'recipes', label: 'Ricette', icon: BookOpen },
-              { id: 'cleaning', label: 'Pulizie', icon: Sparkles },
-              { id: 'finance', label: 'Finanze', icon: Wallet },
+              ...tabOrder.map((tab) => ({
+                id: tab,
+                label:
+                  tab === 'planner' ? 'Calendario Menù' :
+                  tab === 'shopping' ? 'Lista Spesa' :
+                  tab === 'recipes' ? 'Ricette' :
+                  tab === 'cleaning' ? 'Pulizie' :
+                  'Finanze',
+                icon:
+                  tab === 'planner' ? CalendarIcon :
+                  tab === 'shopping' ? ShoppingCart :
+                  tab === 'recipes' ? BookOpen :
+                  tab === 'cleaning' ? Sparkles :
+                  Wallet
+              }))
             ] as Array<{ id: Exclude<AppTab, 'settings'>; label: string; icon: typeof Home }>).filter(t => t.id === 'home' || visibleSections[t.id]).map(tab => (
               <button
                 key={tab.id}
@@ -2204,7 +2351,7 @@ function App() {
               {isMobile ? (
                 <div
                   ref={pagerViewportRef}
-                  className="mobile-tab-viewport"
+                  className={`mobile-tab-viewport ${isPagerDragging ? 'is-dragging' : ''}`}
                   style={activePanelHeight ? { height: activePanelHeight } : undefined}
                   onTouchStart={handlePagerTouchStart}
                   onTouchMove={handlePagerTouchMove}
@@ -2214,24 +2361,27 @@ function App() {
                   <div
                     className={`mobile-tab-track ${isPagerDragging ? 'is-dragging' : ''}`}
                     style={{
-                      marginLeft: mobilePagerOffset,
+                      transform: `translate3d(${mobilePagerOffset}, 0, 0)`,
                       transition: isPagerDragging || !isPagerTransitionEnabled
                         ? 'none'
-                        : 'margin-left 0.34s cubic-bezier(0.22, 1, 0.36, 1)'
+                        : 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)'
                     }}
                   >
-                    {availableTabs.map((tab) => (
-                      <section
-                        key={tab}
-                        ref={(node) => {
-                          panelRefs.current[tab] = node;
-                        }}
-                        className={`mobile-tab-panel ${activeTab === tab ? 'is-active' : ''}`}
-                        aria-hidden={activeTab !== tab}
-                      >
-                        {loadedTabs.includes(tab) ? renderTabContent(tab) : <SectionFallback />}
-                      </section>
-                    ))}
+                    {availableTabs.map((tab) => {
+                      const panelDistance = Math.abs(availableTabs.indexOf(tab) - activeTabIndex);
+                      return (
+                        <section
+                          key={tab}
+                          ref={(node) => {
+                            panelRefs.current[tab] = node;
+                          }}
+                          className={`mobile-tab-panel ${activeTab === tab ? 'is-active' : ''} ${panelDistance > 1 ? 'is-dormant' : ''}`}
+                          aria-hidden={activeTab !== tab}
+                        >
+                          {loadedTabs.includes(tab) ? renderTabContent(tab) : <SectionFallback />}
+                        </section>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
@@ -2249,6 +2399,7 @@ function App() {
           preloadTab={(tab) => preloadSection(tab as AppTab)}
           notificationsCount={notifications.filter(n => !n.read).length}
           visibleSections={visibleSections}
+          orderedTabs={availableTabs}
         />
       )}
 
