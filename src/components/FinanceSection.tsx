@@ -1,87 +1,131 @@
-import React, { useState, type CSSProperties } from 'react';
+import React, { useState, useMemo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Plus, Trash2, Receipt, TrendingUp, PieChart,
-  Settings, MoreVertical
+import {
+  Wallet, Plus, Trash2, Check, X, ChevronLeft, ChevronRight,
+  TrendingUp, PieChart,
+  ArrowRightLeft, Receipt, Settings, Users, MoreVertical
 } from 'lucide-react';
-import { format, parseISO, startOfMonth, startOfToday, isSameMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, parseISO } from 'date-fns';
 import { it } from 'date-fns/locale';
-import type { Expense, Tag } from '../types';
+import type { Expense, ExpenseCategory, Tag } from '../types';
 import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
+import { useInViewport } from '../hooks/useInViewport';
+import financeImg from '../assets/finance-3d-cutout.png';
 import './FinanceSection.css';
 
 /* ============================================================
    HELPERS
    ============================================================ */
-const formatEur = (v: number) => 
-  new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(v);
 
-// Simple Pie Chart Placeholder
-const PieChart2D = ({ data }: { data: { label: string; value: number; color: string }[] }) => {
-  const total = data.reduce((sum, d) => sum + d.value, 0);
-  if (total === 0) return <div className="f-no-data">Nessun dato</div>;
+const CATEGORY_META: Record<ExpenseCategory, { label: string; icon: string; color: string; bg: string }> = {
+  supermarket: { label: 'Supermercato', icon: '🛒', color: '#7c4630', bg: '#fde9d4' },
+  home:        { label: 'Casa',          icon: '🏠', color: '#2d5a87', bg: '#d4e9f7' },
+  medicine:    { label: 'Farmaci',       icon: '💊', color: '#5b21b6', bg: '#ede9fe' },
+  repayment:   { label: 'Rimborso',      icon: '🤝', color: '#0369a1', bg: '#e0f2fe' },
+  other:       { label: 'Altro',         icon: '📦', color: '#065f46', bg: '#d1fae5' },
+};
 
-  let cumulativePercent = 0;
-  function getCoordinatesForPercent(percent: number) {
-    const x = Math.cos(2 * Math.PI * percent);
-    const y = Math.sin(2 * Math.PI * percent);
-    return [x, y];
-  }
+function formatEur(n: number) {
+  return `${Math.abs(n).toFixed(2).replace('.', ',')} €`;
+}
+
+
+
+/* ============================================================
+   PIE CHART (pure SVG, zero deps)
+   ============================================================ */
+function PieChart2D({ data }: { data: { label: string; value: number; color: string }[] }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  if (total === 0) return (
+    <div className="f-no-data">
+      <PieChart size={36} />
+      <p>Nessuna spesa</p>
+    </div>
+  );
+
+  const SIZE = 120;
+  const R = 42;
+  const CX = SIZE / 2;
+  const CY = SIZE / 2;
+
+  const sliceAccumulator = data
+    .filter((d) => d.value > 0)
+    .reduce<{
+      nextAngle: number;
+      slices: Array<{ label: string; value: number; color: string; ratio: number; path: string }>;
+    }>(
+      (acc, d) => {
+        const startAngle = acc.nextAngle;
+        const ratio = d.value / total;
+        const endAngle = startAngle + ratio * 2 * Math.PI;
+        const x1 = CX + R * Math.cos(startAngle);
+        const y1 = CY + R * Math.sin(startAngle);
+        const x2 = CX + R * Math.cos(endAngle);
+        const y2 = CY + R * Math.sin(endAngle);
+        const largeArc = ratio > 0.5 ? 1 : 0;
+
+        acc.slices.push({
+          ...d,
+          ratio,
+          path: `M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${largeArc} 1 ${x2} ${y2} Z`
+        });
+        acc.nextAngle = endAngle;
+        return acc;
+      },
+      { nextAngle: -Math.PI / 2, slices: [] }
+    );
+  const slices = sliceAccumulator.slices;
 
   return (
     <div className="f-pie-container">
-      <svg viewBox="-1 -1 2 2" style={{ transform: 'rotate(-90deg)' }}>
-        {data.map((d, i) => {
-          const [startX, startY] = getCoordinatesForPercent(cumulativePercent);
-          cumulativePercent += d.value / total;
-          const [endX, endY] = getCoordinatesForPercent(cumulativePercent);
-          const largeArcFlag = d.value / total > 0.5 ? 1 : 0;
-          const pathData = [
-            `M ${startX} ${startY}`,
-            `A 1 1 0 ${largeArcFlag} 1 ${endX} ${endY}`,
-            `L 0 0`,
-          ].join(' ');
-          return <path key={i} d={pathData} fill={d.color} />;
-        })}
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="f-pie-svg">
+        {slices.map((s, i) => (
+          <path key={i} d={s.path} fill={s.color} opacity={0.85} stroke="white" strokeWidth={2} />
+        ))}
+        <circle cx={CX} cy={CY} r={22} fill="white" />
       </svg>
       <div className="f-pie-legend">
-        {data.map((d, i) => (
-          <div key={i} className="f-legend-item">
-            <span className="f-legend-dot" style={{ background: d.color }}></span>
+        {data.filter(d => d.value > 0).map((d, i) => (
+          <div key={i} className="f-legend-row">
+            <div className="f-legend-dot" style={{ backgroundColor: d.color }} />
             <span className="f-legend-label">{d.label}</span>
+            <span className="f-legend-value">{formatEur(d.value)}</span>
+            <span className="f-legend-pct">({((d.value / total) * 100).toFixed(0)}%)</span>
           </div>
         ))}
       </div>
     </div>
   );
-};
+}
 
-// Simple Bar Chart
-const BarChart = ({ bars }: { bars: { label: string; value: number }[] }) => {
-  const max = Math.max(...bars.map(b => b.value), 1);
+/* ============================================================
+   BAR CHART (pure SVG-ish, zero deps)
+   ============================================================ */
+function BarChart({ bars }: { bars: { label: string; amount: number }[] }) {
+  const max = Math.max(...bars.map(b => b.amount), 1);
   return (
-    <div className="f-bar-container">
-      {bars.map((b, i) => (
-        <div key={i} className="f-bar-row">
-          <span className="f-bar-label">{b.label}</span>
-          <div className="f-bar-track">
-            <div className="f-bar-fill" style={{ width: `${(b.value / max) * 100}%` }}></div>
+    <div className="f-bar-chart">
+      {bars.map((b, i) => {
+        const pct = (b.amount / max) * 100;
+        return (
+          <div key={i} className="f-bar-col">
+            {b.amount > 0 && (
+              <span className="f-bar-amount">{b.amount.toFixed(0)}€</span>
+            )}
+            <div
+              className="f-bar"
+              style={{ height: `${Math.max(pct, 2)}%` }}
+              title={`${b.label}: ${formatEur(b.amount)}`}
+            />
+            <span className="f-bar-label">{b.label}</span>
           </div>
-          <span className="f-bar-value">{formatEur(b.value)}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
-};
-
-const CATEGORY_META: Record<string, { icon: string; bg: string }> = {
-  supermarket: { icon: '🛒', bg: '#fee2e2' },
-  home: { icon: '🏠', bg: '#e0f2fe' },
-  medicine: { icon: '💊', bg: '#dcfce7' },
-  other: { icon: '📦', bg: '#f1f5f9' },
-};
+}
 
 /* ============================================================
    PROPS
@@ -114,103 +158,175 @@ export function FinanceSection({
 }: FinanceSectionProps) {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<Expense['category']>('supermarket');
-  const [paidBy, setPaidBy] = useState(tags[0]?.id || '');
-  const [splitWith, setSplitWith] = useState<string[]>(tags.map(t => t.id));
+  const [category, setCategory] = useState<ExpenseCategory>('supermarket');
+  const [paidBy, setPaidBy] = useState<string>(tags[0]?.id ?? '');
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isSaving, setIsSaving] = useState(false);
+  const [isSplit, setIsSplit] = useState(false);
+  const [splitWith, setSplitWith] = useState<string[]>([]);
   const [showTagSettings, setShowTagSettings] = useState(false);
+  const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
+  const [showMobileAddForm, setShowMobileAddForm] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showExpensesSheet, setShowExpensesSheet] = useState(false);
-
+  const { ref: heroGraphicRef, isInView: isHeroGraphicInView } = useInViewport<HTMLDivElement>();
   const { transform: expensesSheetTransform, handlers: expensesSheetHandlers } = useSwipeToDismiss(() => {
     setShowExpensesSheet(false);
     setShowMoreMenu(false);
   }, 100, showExpensesSheet);
 
-  const today = startOfToday();
-  const currentMonthStart = startOfMonth(today);
-  const monthLabel = format(today, 'MMMM yyyy', { locale: it });
+  // Sync paidBy when tags load
+  React.useEffect(() => {
+    if (!paidBy && tags.length > 0) {
+      setPaidBy(tags[0].id);
+    }
+  }, [tags, paidBy]);
 
-  const filteredExpenses = expenses
-    .filter(e => isSameMonth(parseISO(e.date), currentMonthStart))
-    .sort((a, b) => b.date.localeCompare(a.date));
+  const monthStart = startOfMonth(viewMonth);
+  const monthEnd   = endOfMonth(viewMonth);
+  const monthLabel = format(viewMonth, 'MMMM yyyy', { locale: it });
 
-  const totalSpent = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const monthExpenses = useMemo(() =>
+    expenses.filter(e => {
+      const d = parseISO(e.date);
+      return d >= monthStart && d <= monthEnd;
+    }),
+    [expenses, monthEnd, monthStart]
+  );
 
-  // Group by Category for Pie
-  const catTotals = filteredExpenses.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount;
-    return acc;
-  }, {} as Record<string, number>);
+  const spendingExpenses = useMemo(() => 
+    monthExpenses.filter(e => e.category !== 'repayment'),
+    [monthExpenses]
+  );
 
-  const pieData = Object.entries(catTotals).map(([cat, val]) => ({
-    label: cat.charAt(0).toUpperCase() + cat.slice(1),
-    value: val,
-    color: cat === 'supermarket' ? '#ef4444' : cat === 'home' ? '#3b82f6' : cat === 'medicine' ? '#10b981' : '#94a3b8'
-  }));
+  const monthTotal = spendingExpenses.reduce((s, e) => s + e.amount, 0);
 
-  // Group by Person for Bar (who spent how much)
-  const personTotals = filteredExpenses.reduce((acc, e) => {
-    acc[e.paidBy] = (acc[e.paidBy] || 0) + e.amount;
-    return acc;
-  }, {} as Record<string, number>);
+  const personTotals = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of monthExpenses) {
+      map[e.paidBy] = (map[e.paidBy] ?? 0) + e.amount;
+    }
+    return map;
+  }, [monthExpenses]);
 
-  const barData = tags.map(t => ({
-    label: t.label,
-    value: personTotals[t.id] || 0
-  }));
+  const balanceSummary = useMemo(() => {
+    const persons = tags;
+    if (persons.length < 2) return [];
+    const netBalances: Record<string, number> = {};
+    persons.forEach(p => { netBalances[p.id] = 0; });
 
-  // Balance calculation (Owes/Owed)
-  // 1. Calculate how much each person *should* have paid based on splitWith
-  const balances: Record<string, number> = {};
-  tags.forEach(t => { balances[t.id] = 0; });
+    for (const e of monthExpenses) {
+      if (netBalances[e.paidBy] !== undefined) netBalances[e.paidBy] += e.amount;
+      const targets = (e.splitWith && e.splitWith.length > 0) ? e.splitWith : persons.map(p => p.id);
+      const share = e.amount / Math.max(targets.length, 1);
+      targets.forEach(tid => {
+        if (netBalances[tid] !== undefined) netBalances[tid] -= share;
+      });
+    }
 
-  filteredExpenses.forEach(exp => {
-    const participants = exp.splitWith && exp.splitWith.length > 0 ? exp.splitWith : tags.map(t => t.id);
-    const share = exp.amount / participants.length;
-    // Payer gets credit
-    balances[exp.paidBy] += exp.amount;
-    // Participants get debit
-    participants.forEach(pId => {
-      balances[pId] -= share;
+    const credits = persons.map(p => ({ id: p.id, label: p.label, balance: netBalances[p.id] || 0 }));
+    const debts: { from: string; to: string; amount: number }[] = [];
+    const debtors  = credits.filter(c => c.balance < -0.01).sort((a, b) => a.balance - b.balance);
+    const creditors = credits.filter(c => c.balance >  0.01).sort((a, b) => b.balance - a.balance);
+
+    let di = 0, ci = 0;
+    const d = debtors.map(x => ({ ...x }));
+    const c = creditors.map(x => ({ ...x }));
+    while (di < d.length && ci < c.length) {
+      const settled = Math.min(-d[di].balance, c[ci].balance);
+      if (settled > 0.005) debts.push({ from: d[di].label, to: c[ci].label, amount: settled });
+      d[di].balance += settled;
+      c[ci].balance -= settled;
+      if (Math.abs(d[di].balance) < 0.005) di++;
+      if (Math.abs(c[ci].balance) < 0.005) ci++;
+    }
+    return debts;
+  }, [monthExpenses, tags]);
+
+  const categoryTotals = useMemo(() => {
+    const map: Record<ExpenseCategory, number> = { supermarket: 0, home: 0, medicine: 0, other: 0, repayment: 0 };
+    for (const e of spendingExpenses) { map[e.category] += e.amount; }
+    return map;
+  }, [spendingExpenses]);
+
+  const barData = useMemo(() => {
+    return Array.from({ length: 6 }).map((_, i) => {
+      const m = subMonths(new Date(), 5 - i);
+      const ms = startOfMonth(m);
+      const me = endOfMonth(m);
+      const total = expenses
+        .filter(e => { 
+          const d = parseISO(e.date); 
+          return d >= ms && d <= me && e.category !== 'repayment'; 
+        })
+        .reduce((s, e) => s + e.amount, 0);
+      return { label: format(m, 'MMM', { locale: it }), amount: total };
     });
-  });
+  }, [expenses]);
+
+  const pieData = (Object.entries(categoryTotals) as [ExpenseCategory, number][])
+    .filter(([cat, val]) => cat !== 'repayment' && val > 0)
+    .map(([cat, val]) => ({
+      label: CATEGORY_META[cat].label,
+      value: val,
+      color: { supermarket: '#f5c4a0', home: '#a8cff0', medicine: '#c4b5fd', other: '#6ee7b7', repayment: '#0ea5e9' }[cat],
+  }));
+
+  const filteredExpenses = useMemo(() => {
+    return [...expenses]
+      .filter(e => {
+        const d = parseISO(e.date);
+        return d >= monthStart && d <= monthEnd;
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [expenses, monthEnd, monthStart]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || !description || isSaving) return;
+    const parsed = parseFloat(amount.replace(',', '.'));
+    if (!parsed || parsed <= 0 || !paidBy) return;
     setIsSaving(true);
     try {
       await onAddExpense({
-        amount: parseFloat(amount.replace(',', '.')),
-        description: description.trim(),
+        amount: parsed,
+        description: description.trim() || '—',
         category,
+        date,
         paidBy,
-        splitWith,
-        date: format(today, 'yyyy-MM-dd')
+        splitWith: isSplit && splitWith.length > 0 ? splitWith : undefined
       });
       setAmount('');
       setDescription('');
+      setIsSplit(false);
+      setSplitWith([]);
+      setIsSaving(false);
+      setShowMobileAddForm(false);
     } catch (err) {
-      alert("Errore durante il salvataggio.");
+      console.error(err);
+      alert("Errore durante il salvataggio della spesa. Riprova.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSettlement = async (fromId: string, toId: string, amount: number) => {
-    if (!window.confirm(`Stai registrando un rimborso di ${formatEur(amount)}? Questo bilancerà il conto nello storico fisicamente come una nuova voce.`)) return;
+
+
+  const handleRepay = async (from: string, to: string, amount: number) => {
+    const debtor = tags.find(t => t.label === from);
+    const creditor = tags.find(t => t.label === to);
+    if (!debtor || !creditor) return;
     setIsSaving(true);
     try {
       await onAddExpense({
         amount,
-        description: `Rimborso: ${tags.find(t => t.id === fromId)?.label} → ${tags.find(t => t.id === toId)?.label}`,
-        category: 'other',
-        paidBy: fromId,
-        splitWith: [toId],
-        date: format(today, 'yyyy-MM-dd')
+        description: `Rimborso a ${creditor.label}`,
+        category: 'repayment',
+        date: format(new Date(), 'yyyy-MM-dd'),
+        paidBy: debtor.id,
+        splitWith: [creditor.id]
       });
     } catch (err) {
+      console.error(err);
       alert("Errore durante la registrazione del rimborso.");
     } finally {
       setIsSaving(false);
@@ -244,159 +360,201 @@ export function FinanceSection({
             )}
           </div>
 
-          <div className="finance-hero-graphic">
-             <div className="finance-visual-container">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="f-floating-coin" style={{ 
-                    '--size': `${15 + Math.random() * 20}px`,
-                    '--left': `${Math.random() * 100}%`,
-                    '--top': `${Math.random() * 100}%`,
-                    '--delay': `${Math.random() * 2}s`,
-                    '--duration': `${3 + Math.random() * 4}s`,
-                    '--drift': `${(Math.random() - 0.5) * 40}px`
-                  } as FinanceCoinStyle}>€</div>
-                ))}
-                <div className="f-total-bubble">
-                   <span className="f-bubble-label">Totale Mese</span>
-                   <span className="f-bubble-value">{formatEur(totalSpent)}</span>
-                </div>
-             </div>
+          <div ref={heroGraphicRef} className={`finance-hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
+            <div className="finance-coins-container">
+              <div className="finance-coin" style={{ '--size': '40px', '--left': '10%', '--top': '20%', '--delay': '0s', '--duration': '4s', '--drift': '20px' } as FinanceCoinStyle}></div>
+              <div className="finance-coin" style={{ '--size': '30px', '--left': '80%', '--top': '15%', '--delay': '1s', '--duration': '5s', '--drift': '-15px' } as FinanceCoinStyle}></div>
+              <div className="finance-coin" style={{ '--size': '35px', '--left': '40%', '--top': '70%', '--delay': '0.5s', '--duration': '4.5s', '--drift': '10px' } as FinanceCoinStyle}></div>
+              <div className="finance-coin" style={{ '--size': '25px', '--left': '65%', '--top': '60%', '--delay': '1.5s', '--duration': '6s', '--drift': '-12px' } as FinanceCoinStyle}></div>
+            </div>
+            <div className="floating-piggy-wrapper">
+              <img
+                src={financeImg}
+                alt="Finance Piggy"
+                className="floating-piggy"
+                width={1024}
+                height={1024}
+                decoding="async"
+              />
+              <div className="piggy-shadow"></div>
+            </div>
           </div>
         </header>
 
-        <div className="finance-grid">
-           {/* Add Expense Form */}
-           <div className="f-widget f-add-widget">
-              <h2 className="f-widget-title"><Plus size={18} /> Nuova Spesa</h2>
-              <form onSubmit={handleSubmit} className="f-add-form">
-                 <div className="f-input-group">
-                    <label>Importo</label>
-                    <div className="f-amount-input-wrapper">
-                       <span>€</span>
-                       <input 
-                         type="text" 
-                         inputMode="decimal" 
-                         placeholder="0,00" 
-                         value={amount} 
-                         onChange={e => setAmount(e.target.value)}
-                         required
-                       />
-                    </div>
-                 </div>
+        {isMobile && (
+          <div className="f-mobile-summary-cards">
+             <div className="f-summary-card total">
+                <span className="f-sum-label">Totale {format(viewMonth, 'MMM', { locale: it })}</span>
+                <span className="f-sum-value">{formatEur(monthTotal)}</span>
+             </div>
+             <div className="f-summary-card breakdown">
+                <div className="f-month-selector finance-mobile-nav">
+                  <button className="f-month-btn" onClick={() => setViewMonth(m => subMonths(m, 1))}><ChevronLeft size={24} /></button>
+                  <span className="f-mobile-month-name">{format(viewMonth, 'MMM yyyy', { locale: it })}</span>
+                  <button className="f-month-btn" onClick={() => setViewMonth(m => addMonths(m, 1))}><ChevronRight size={24} /></button>
+                </div>
+             </div>
+          </div>
+        )}
 
-                 <div className="f-input-group">
-                    <label>Descrizione</label>
-                    <input 
-                      type="text" 
-                      placeholder="Esempio: Spesa settimanale..." 
-                      value={description}
-                      onChange={e => setDescription(e.target.value)}
-                      required
-                    />
-                 </div>
-
-                 <div className="f-input-row">
-                    <div className="f-input-group">
-                       <label>Categoria</label>
-                       <select value={category} onChange={e => setCategory(e.target.value as any)}>
-                          <option value="supermarket">🛒 Supermercato</option>
-                          <option value="home">🏠 Casa</option>
-                          <option value="medicine">💊 Farmacia</option>
-                          <option value="other">📦 Altro</option>
-                       </select>
-                    </div>
-                    <div className="f-input-group">
-                       <label>Pagato da</label>
-                       <select value={paidBy} onChange={e => setPaidBy(e.target.value)}>
-                          {tags.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                       </select>
-                    </div>
-                 </div>
-
-                 <div className="f-input-group">
-                    <label>Diviso con</label>
-                    <div className="f-split-selector">
-                       {tags.map(t => (
-                         <button 
-                           key={t.id} 
-                           type="button"
-                           className={`f-split-btn ${splitWith.includes(t.id) ? 'active' : ''}`}
-                           style={{ '--tint': t.color } as CSSProperties}
-                           onClick={() => toggleSplitParticipant(t.id)}
-                         >
-                            {t.label}
-                         </button>
-                       ))}
-                    </div>
-                 </div>
-
-                 <button type="submit" className="f-submit-btn" disabled={isSaving}>
-                    {isSaving ? 'Salvataggio...' : 'Registra Spesa'}
-                 </button>
-              </form>
-           </div>
-
-           {/* Balances Widget */}
-           <div className="f-widget f-balance-widget">
-              <h2 className="f-widget-title"><TrendingUp size={18} /> Deficit & Crediti</h2>
-              <div className="f-balances-list">
-                 {tags.map(t => {
-                   const bal = balances[t.id];
-                   return (
-                     <div key={t.id} className="f-balance-item">
-                        <div className="f-balance-person">
-                           <div className="f-person-dot" style={{ background: t.color }}></div>
-                           <span className="f-person-name">{t.label}</span>
+        <div className={`finance-grid ${isMobile ? 'is-mobile' : ''}`}>
+          
+          {(!isMobile || showMobileAddForm) && (
+            <div className={`finance-top-row ${isMobile ? 'management-sheet-overlay' : ''}`} onClick={() => isMobile && setShowMobileAddForm(false)}>
+              <div className={`f-widget f-add-widget ${isMobile ? 'management-sheet-content' : ''}`} onClick={e => e.stopPropagation()}>
+                {isMobile ? (
+                  <div className="management-sheet-header">
+                    <h3><Plus size={24} /> Nuova Spesa</h3>
+                    <button className="management-sheet-close" onClick={() => setShowMobileAddForm(false)}>
+                      <X size={24} />
+                    </button>
+                  </div>
+                ) : (
+                  <h2 className="f-form-title"><Plus size={18} /> Aggiungi Spesa</h2>
+                )}
+                
+                <div className={isMobile ? 'management-sheet-body' : ''}>
+                  <form onSubmit={handleSubmit}>
+                    <div className="f-form-grid">
+                      <div className="f-form-group">
+                        <label className="f-label">Importo</label>
+                        <div className="f-amount-wrapper">
+                          <span className="f-amount-symbol">€</span>
+                          <input type="number" inputMode="decimal" step="0.01" min="0" className="f-input f-input-amount" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} required />
                         </div>
-                        <div className={`f-balance-amount ${bal >= 0 ? 'pos' : 'neg'}`}>
-                           {bal >= 0 ? '+' : ''}{formatEur(bal)}
+                      </div>
+                      <div className="f-form-group">
+                        <label className="f-label">Data</label>
+                        <input type="date" className="f-input" value={date} onChange={e => setDate(e.target.value)} />
+                      </div>
+                      <div className="f-form-group full-width">
+                        <label className="f-label">Descrizione</label>
+                        <input type="text" className="f-input" placeholder="Es. Spesa..." value={description} onChange={e => setDescription(e.target.value)} />
+                      </div>
+                      <div className="f-form-group full-width">
+                        <label className="f-label">Categoria</label>
+                        <div className="f-cat-group">
+                          {(Object.entries(CATEGORY_META) as [ExpenseCategory, typeof CATEGORY_META[ExpenseCategory]][]).filter(([k]) => k !== 'repayment').map(([key, meta]) => (
+                            <button key={key} type="button" className={`f-cat-pill ${category === key ? `active-${key}` : ''}`} onClick={() => setCategory(key)}>{meta.icon} {isMobile ? meta.label : meta.label}</button>
+                          ))}
                         </div>
+                      </div>
+                      {tags.length > 0 && (
+                        <div className="f-form-group full-width">
+                          <label className="f-label">Pagato da</label>
+                          <div className="f-person-group">
+                            {tags.map(tag => (
+                              <button key={tag.id} type="button" className={`f-person-pill ${paidBy === tag.id ? 'selected' : ''}`} style={paidBy === tag.id ? { background: tag.color } : {}} onClick={() => setPaidBy(tag.id)}>{tag.label}</button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="f-form-group full-width">
+                        <div className="f-split-header">
+                          <label className="f-label">Divisione</label>
+                          <button type="button" className={`f-split-toggle ${isSplit ? 'split-active' : 'all-active'}`} onClick={() => { setIsSplit(!isSplit); if (!isSplit) setSplitWith(tags.map(t => t.id)); }}><Users size={14} /> {isSplit ? 'Specifica' : 'Tutti'}</button>
+                        </div>
+                        {isSplit && (
+                          <div className="f-split-selector">
+                            <div className="f-person-group">
+                              {tags.map(tag => (
+                                <button key={tag.id} type="button" className={`f-person-pill ${splitWith.includes(tag.id) ? 'selected' : ''}`} style={splitWith.includes(tag.id) ? { background: tag.color } : {}} onClick={() => toggleSplitParticipant(tag.id)}>{tag.label}</button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <button type="submit" className="f-submit-btn" disabled={isSaving || !amount || !paidBy}>{isSaving ? 'Salvataggio…' : 'Registra Spesa'}</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {!isMobile && (
+                <div className="f-widget f-balance-widget">
+                  <div className="f-widget-header">
+                    <h2 className="f-widget-title"><ArrowRightLeft size={16} /> Riepilogo Mensile</h2>
+                    <div className="f-month-selector">
+                      <button className="f-month-btn" onClick={() => setViewMonth(m => subMonths(m, 1))}><ChevronLeft size={16} /></button>
+                      <span>{format(viewMonth, 'MMM yy', { locale: it })}</span>
+                      <button className="f-month-btn" onClick={() => setViewMonth(m => addMonths(m, 1))}><ChevronRight size={16} /></button>
+                    </div>
+                  </div>
+                  <p className="f-sum-label-desk">Totale {monthLabel}</p>
+                  <p className="f-sum-value-desk">{formatEur(monthTotal)}</p>
+                  <div className="f-person-cards">
+                    {tags.map(tag => {
+                      const spent = personTotals[tag.id] ?? 0;
+                      const count = monthExpenses.filter(e => e.paidBy === tag.id).length;
+                      if (spent === 0 && monthTotal === 0) return null;
+                      return (
+                        <div key={tag.id} className="f-person-card">
+                          <div className="f-person-avatar" style={{ background: tag.color }}>{tag.label.substring(0, 2).toUpperCase()}</div>
+                          <div className="f-person-info">
+                            <p className="f-person-name">{tag.label}</p>
+                            <span className="f-person-count">{count} spese</span>
+                          </div>
+                          <span className="f-person-amount">{formatEur(spent)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {!isMobile && balanceSummary.length > 0 && (
+                    <div className="f-desktop-repay-section">
+                      <p className="f-repay-title">Debiti & Rimborsi</p>
+                      <div className="f-repay-list">
+                        {balanceSummary.map((s, i) => (
+                          <div key={i} className="f-repay-row">
+                            <div className="f-repay-names">
+                              <span className="f-repay-name-from">{s.from}</span>
+                              <ArrowRightLeft size={12} className="f-repay-arrow" />
+                              <span className="f-repay-name-to">{s.to}</span>
+                            </div>
+                            <div className="f-repay-action-group">
+                              <span className="f-repay-val">{formatEur(s.amount)}</span>
+                              <button className="f-repay-btn" onClick={() => handleRepay(s.from, s.to, s.amount)} title="Segna come rimborsato">
+                                <Check size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isMobile && balanceSummary.length > 0 && (
+            <div className="f-mobile-repay-cards">
+               {balanceSummary.map((s, i) => (
+                  <div key={i} className="f-repay-card">
+                     <div className="f-repay-info">
+                        <span className="f-repay-from">{s.from}</span>
+                        <ArrowRightLeft size={16} />
+                        <span className="f-repay-to">{s.to}</span>
                      </div>
-                   );
-                 })}
-              </div>
-
-              <div className="f-settlements-suggestion">
-                 <h3 className="f-sub-title">Suggerimenti pareggio:</h3>
-                 {(() => {
-                   const sorted = tags.map(t => ({ id: t.id, bal: balances[t.id] })).sort((a,b) => a.bal - b.bal);
-                   let i = 0, j = sorted.length - 1;
-                   const results = [];
-                   const localBals = sorted.map(s => ({ ...s }));
-
-                   while(i < j) {
-                     const amount = Math.min(-localBals[i].bal, localBals[j].bal);
-                     if (amount > 0.01) {
-                       results.push({ from: localBals[i].id, to: localBals[j].id, amount });
-                       localBals[i].bal += amount;
-                       localBals[j].bal -= amount;
-                     }
-                     if (localBals[i].bal >= -0.01) i++;
-                     if (localBals[j].bal <= 0.01) j--;
-                   }
-                   
-                   if (results.length === 0) return <p className="f-all-even">🎉 Tutti in pari!</p>;
-                   return results.map((r, idx) => (
-                     <div key={idx} className="f-settle-row">
-                        <span>{tags.find(t => t.id === r.from)?.label} deve dare <b>{formatEur(r.amount)}</b> a {tags.find(t => t.id === r.to)?.label}</span>
-                        <button onClick={() => handleSettlement(r.from, r.to, r.amount)}>Saldato</button>
+                     <div className="f-repay-actions">
+                        <span className="f-repay-amount">{formatEur(s.amount)}</span>
+                        <button className="f-repay-confirm" onClick={() => handleRepay(s.from, s.to, s.amount)}><Check size={18} /></button>
                      </div>
-                   ));
-                 })()}
-              </div>
-           </div>
+                  </div>
+               ))}
+            </div>
+          )}
 
-           {/* Charts */}
-           <div className="f-charts-row">
-              <div className="f-widget f-pie-widget">
-                <h2 className="f-widget-title"><PieChart size={16} /> Categorie</h2>
-                <PieChart2D data={pieData} />
-              </div>
-              <div className="f-widget f-bar-widget">
-                <h2 className="f-widget-title"><TrendingUp size={16} /> Tendenza</h2>
-                <BarChart bars={barData} />
-              </div>
-           </div>
+          <div className="finance-bottom-row">
+            <div className="f-widget f-chart-widget">
+              <h2 className="f-widget-title"><PieChart size={16} /> Categorie</h2>
+              <PieChart2D data={pieData} />
+            </div>
+            <div className="f-widget f-bar-widget">
+              <h2 className="f-widget-title"><TrendingUp size={16} /> Tendenza</h2>
+              <BarChart bars={barData} />
+            </div>
+          </div>
 
           <div className="f-widget f-history-widget">
             <div className="f-widget-header" style={{ marginBottom: '20px' }}>
@@ -452,6 +610,10 @@ export function FinanceSection({
                 </button>
               </div>
 
+              <button className="mobile-fab-add finance" onClick={() => setShowMobileAddForm(true)}>
+                <Plus size={28} />
+              </button>
+
               {showExpensesSheet && (
                 <div className="management-sheet-overlay">
                   <div
@@ -462,12 +624,15 @@ export function FinanceSection({
                   >
                     <div className="bottom-sheet-drag-handle" />
                     <div className="management-sheet-header">
-                      <h3><Receipt size={24} /> Elenco Spese</h3>
+                       <h3><Wallet size={24} /> Elenco Spese</h3>
                     </div>
                     <div className="management-sheet-body">
                       {filteredExpenses.map(exp => (
-                        <div key={exp.id} className="management-list-item f-sheet-item">
-                           <div className="management-item-details">
+                        <div key={exp.id} className="management-list-item">
+                          <div className="f-expense-cat-icon" style={{ background: CATEGORY_META[exp.category].bg, marginRight: '12px' }}>
+                            {CATEGORY_META[exp.category].icon}
+                          </div>
+                          <div className="management-item-details">
                             <span className="management-item-title">{exp.description}</span>
                             <span className="management-item-subtitle">{format(parseISO(exp.date), 'dd MMM', { locale: it })} • {tags.find(t => t.id === exp.paidBy)?.label}</span>
                           </div>
