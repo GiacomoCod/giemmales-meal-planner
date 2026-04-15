@@ -12,16 +12,13 @@ export function useInViewport<T extends HTMLElement>({
   initialInView = true
 }: UseInViewportOptions = {}) {
   const ref = useRef<T | null>(null);
-  const [isInView, setIsInView] = useState(initialInView);
+  const [isInView, setIsInView] = useState(initialInView || typeof IntersectionObserver === 'undefined');
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
 
-    if (typeof IntersectionObserver === 'undefined') {
-      setIsInView(true);
-      return;
-    }
+    if (typeof IntersectionObserver === 'undefined') return;
 
     let frameId: number | null = null;
     const observer = new IntersectionObserver(

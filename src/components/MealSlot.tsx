@@ -4,10 +4,12 @@ import { Trash2, Check, X } from 'lucide-react';
 import type { MealEntry, Tag } from '../types';
 import './MealSlot.css';
 
+type MealIconComponent = React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+
 export function MealSlot({
   meal, entries, onAdd, onRemove, onUpdateAssignee, onUpdateText, tags, hideHeader = false
 }: {
-  meal: { id: string; label: string; Icon: any };
+  meal: { id: string; label: string; Icon: MealIconComponent };
   entries: MealEntry[];
   onAdd: (text: string, assignees: string[]) => void;
   onRemove: (id: string) => void;

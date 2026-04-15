@@ -11,6 +11,11 @@ interface SwipeToDismissResult {
   };
 }
 
+interface SwipeGestureState {
+  startY: number | null;
+  currentY: number;
+}
+
 export function useSwipeToDismiss(
   onDismiss: () => void,
   threshold: number = 100, // pixels downwards to dismiss
@@ -20,6 +25,7 @@ export function useSwipeToDismiss(
   const [isDragging, setIsDragging] = useState(false);
   const translateYRef = useRef(0);
   const rafIdRef = useRef<number | null>(null);
+  const gestureStateRef = useRef<SwipeGestureState>({ startY: null, currentY: 0 });
   
   // Lock background body scroll ONLY while the bottom sheet is active
   useEffect(() => {
@@ -36,15 +42,14 @@ export function useSwipeToDismiss(
   // Ensure sheet always reopens from a sane position.
   useEffect(() => {
     if (!isActive) {
-      setTranslateY(0);
-      setIsDragging(false);
-      startY.current = null;
-      currentY.current = 0;
+      gestureStateRef.current = { startY: null, currentY: 0 };
+      const timeoutId = window.setTimeout(() => {
+        setTranslateY(0);
+        setIsDragging(false);
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
   }, [isActive]);
-  
-  const startY = useRef<number | null>(null);
-  const currentY = useRef<number>(0);
 
   const scheduleTranslateY = useCallback((nextValue: number) => {
     translateYRef.current = nextValue;
@@ -62,23 +67,32 @@ export function useSwipeToDismiss(
     
     // Don't intercept touches if we are inside a scrolling container that itself is scrolled down
     // Since this is a simple hook, we'll let it slide, but we just track Y offset.
-    startY.current = e.touches[0].clientY;
+    gestureStateRef.current = {
+      ...gestureStateRef.current,
+      startY: e.touches[0].clientY
+    };
     setIsDragging(true);
   }, []);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isDragging || startY.current === null) return;
+    if (!isDragging || gestureStateRef.current.startY === null) return;
     
-    const dragY = e.touches[0].clientY - startY.current;
+    const dragY = e.touches[0].clientY - gestureStateRef.current.startY;
     
     // We only want to drag DOWNwards (val > 0). If dragY < 0 it means pulling up.
     if (dragY > 0) {
       // Small resistance for natural feel (optional)
       scheduleTranslateY(dragY);
-      currentY.current = dragY;
+      gestureStateRef.current = {
+        ...gestureStateRef.current,
+        currentY: dragY
+      };
     } else {
       scheduleTranslateY(0);
-      currentY.current = 0;
+      gestureStateRef.current = {
+        ...gestureStateRef.current,
+        currentY: 0
+      };
     }
   }, [isDragging, scheduleTranslateY]);
 
@@ -86,12 +100,11 @@ export function useSwipeToDismiss(
     if (!isDragging) return;
     setIsDragging(false);
 
-    const shouldDismiss = currentY.current > threshold;
+    const shouldDismiss = gestureStateRef.current.currentY > threshold;
 
     // Always snap state back first to avoid "overlay visible but sheet offscreen" races.
     scheduleTranslateY(0);
-    startY.current = null;
-    currentY.current = 0;
+    gestureStateRef.current = { startY: null, currentY: 0 };
 
     if (shouldDismiss) {
       onDismiss();
@@ -101,8 +114,7 @@ export function useSwipeToDismiss(
   const onTouchCancel = useCallback(() => {
     setIsDragging(false);
     scheduleTranslateY(0);
-    startY.current = null;
-    currentY.current = 0;
+    gestureStateRef.current = { startY: null, currentY: 0 };
   }, [scheduleTranslateY]);
 
   // Extra safeguard: if translate remains > 0 while active and not dragging, snap it back.

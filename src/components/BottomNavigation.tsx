@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   Home, 
   Calendar as CalendarIcon, 
@@ -11,13 +11,35 @@ import {
 } from 'lucide-react';
 import './BottomNavigation.css';
 
+type NavigationTab = 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings';
+type BottomTab = NavigationTab | 'more';
+type NavItem = {
+  id: BottomTab;
+  label: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+};
+type NavigationItem = Omit<NavItem, 'id'> & { id: NavigationTab };
+
 interface BottomNavigationProps {
-  activeTab: string;
-  setActiveTab: (tab: any) => void;
-  preloadTab?: (tab: string) => void;
+  activeTab: NavigationTab;
+  setActiveTab: (tab: NavigationTab) => void;
+  preloadTab?: (tab: NavigationTab) => void;
   notificationsCount: number;
   visibleSections: Record<string, boolean>;
 }
+
+const PRIMARY_TABS: NavigationItem[] = [
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'planner', label: 'Menù', icon: CalendarIcon },
+  { id: 'cleaning', label: 'Pulizie', icon: Sparkles }
+];
+
+const SECONDARY_TABS: NavigationItem[] = [
+  { id: 'shopping', label: 'Spesa', icon: ShoppingCart },
+  { id: 'recipes', label: 'Ricette', icon: BookOpen },
+  { id: 'finance', label: 'Finanze', icon: Wallet },
+  { id: 'settings', label: 'Impostazioni', icon: Settings }
+];
 
 export const BottomNavigation: React.FC<BottomNavigationProps> = ({ 
   activeTab, 
@@ -28,28 +50,18 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
 }) => {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
-  const primaryTabs = [
-    { id: 'home', label: 'Home', icon: Home },
-    { id: 'planner', label: 'Menù', icon: CalendarIcon },
-    { id: 'cleaning', label: 'Pulizie', icon: Sparkles },
-  ].filter(tab => tab.id === 'home' || visibleSections[tab.id]);
+  const primaryTabs = PRIMARY_TABS.filter((tab) => tab.id === 'home' || visibleSections[tab.id]);
 
-  const secondaryTabs = useMemo(() => ([
-    { id: 'shopping', label: 'Spesa', icon: ShoppingCart },
-    { id: 'recipes', label: 'Ricette', icon: BookOpen },
-    { id: 'finance', label: 'Finanze', icon: Wallet },
-    { id: 'settings', label: 'Impostazioni', icon: Settings },
-  ].filter(tab => tab.id === 'settings' || visibleSections[tab.id])), [visibleSections]);
+  const secondaryTabs = useMemo(
+    () => SECONDARY_TABS.filter((tab) => tab.id === 'settings' || visibleSections[tab.id]),
+    [visibleSections]
+  );
 
   const isMoreActive = secondaryTabs.some(tab => tab.id === activeTab);
-  const tabs = [...primaryTabs, { id: 'more', label: 'Altro', icon: MoreHorizontal }];
+  const tabs: NavItem[] = [...primaryTabs, { id: 'more', label: 'Altro', icon: MoreHorizontal }];
   const activeIndex = isMoreActive
     ? tabs.findIndex(tab => tab.id === 'more')
     : tabs.findIndex(tab => tab.id === activeTab);
-
-  useEffect(() => {
-    setIsMoreOpen(false);
-  }, [activeTab]);
 
   return (
     <>

@@ -18,6 +18,15 @@ import { PerformanceHUD } from './components/PerformanceHUD';
 import { buildRoomTaskKey, dedupeRoomTasks, hasRoomTask, sanitizeTaskName } from './utils/cleaningTasks';
 
 type AppTab = 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings';
+type Suggestion = {
+  text: string;
+  icon: string;
+  category?: 'supermarket' | 'home' | 'medicine';
+};
+type RecipeSaveError = {
+  code?: string;
+  message?: string;
+};
 
 const TAB_ORDER: AppTab[] = ['home', 'planner', 'shopping', 'recipes', 'cleaning', 'finance', 'settings'];
 
@@ -100,6 +109,10 @@ function SectionFallback() {
   );
 }
 
+function generateId() {
+  return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+}
+
 function App() {
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [user, setUser] = useState<User | null>(null);
@@ -116,7 +129,7 @@ function App() {
       title: isGiemmale ? "Giemmale's HOME PLANNER" : `${user.displayName || user.email?.split('@')[0] || 'User'}'s HOME PLANNER`,
       isGiemmale
     };
-  }, [user?.uid, user?.email, user?.displayName]);
+  }, [user]);
 
   const [sessionReads, setSessionReads] = useState(0);
 
@@ -180,7 +193,7 @@ function App() {
   const [newTaskName, setNewTaskName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [editingFrequency, setEditingFrequency] = useState<{value: number, unit: TaskUnit}>({value: 1, unit: 'settimane'});
-  const [suggestions, setSuggestions] = useState<{ text: string; icon: string; category?: 'supermarket' | 'home' | 'medicine' }[]>(SUGGESTIONS as any);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>(() => [...SUGGESTIONS]);
   const [showNotifDeleteConfirm, setShowNotifDeleteConfirm] = useState<string | null>(null);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -189,7 +202,7 @@ function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const [isDeletingAllInProgress, setIsDeletingAllInProgress] = useState(false);
-  const undoTimeoutRef = useRef<any>(null);
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSeededRef = useRef<Set<string>>(new Set());
   const uniqueRoomTasks = useMemo(() => dedupeRoomTasks(roomTasks), [roomTasks]);
   const pagerViewportRef = useRef<HTMLDivElement>(null);
@@ -515,16 +528,20 @@ function App() {
     const activeIndex = availableTabs.indexOf(activeTab);
     if (activeIndex !== -1) return;
 
-    setActiveTabState('home');
-    setIsPagerTransitionEnabled(false);
     schedulePagerDragOffset(0);
     if (pagerTransitionFrameRef.current !== null) {
       window.cancelAnimationFrame(pagerTransitionFrameRef.current);
     }
-    pagerTransitionFrameRef.current = window.requestAnimationFrame(() => {
-      setIsPagerTransitionEnabled(true);
-      pagerTransitionFrameRef.current = null;
-    });
+    const timeoutId = window.setTimeout(() => {
+      setActiveTabState('home');
+      setIsPagerTransitionEnabled(false);
+      pagerTransitionFrameRef.current = window.requestAnimationFrame(() => {
+        setIsPagerTransitionEnabled(true);
+        pagerTransitionFrameRef.current = null;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [activeTab, availableTabs, schedulePagerDragOffset]);
 
   useEffect(() => {
@@ -537,18 +554,23 @@ function App() {
 
     if (nearbyTabs.length === 0) return;
 
-    markTabsLoaded(nearbyTabs);
+    const timeoutId = window.setTimeout(() => {
+      markTabsLoaded(nearbyTabs);
+    }, 0);
     nearbyTabs.forEach((tab) => preloadSection(tab));
+    return () => window.clearTimeout(timeoutId);
   }, [activeTab, availableTabs, markTabsLoaded, preloadSection]);
 
   useEffect(() => {
     if (!isMobile) {
-      setActivePanelHeight(null);
-      return;
+      const timeoutId = window.setTimeout(() => setActivePanelHeight(null), 0);
+      return () => window.clearTimeout(timeoutId);
     }
 
     const activePanel = panelRefs.current[activeTab];
-    if (!activePanel) return;
+    if (!activePanel) {
+      return;
+    }
 
     const updateHeight = () => {
       setActivePanelHeight(activePanel.offsetHeight);
@@ -624,7 +646,7 @@ function App() {
     try {
       const q = query(collection(db, colPath('notifications')));
       const snapshot = await getDocs(q);
-      const batch: any[] = [];
+      const batch: Promise<void>[] = [];
       snapshot.forEach(doc => {
         batch.push(deleteDoc(doc.ref));
       });
@@ -658,18 +680,20 @@ function App() {
   };
 
   useEffect(() => {
-    setMealPlan({});
-    setShoppingList([]);
-    setNotifications([]);
-    setRecipes([]);
-    setWeekNotes('');
-    setCleaningNotes('');
-    setCleaningLogs([]);
-    setRoomTasks([]);
-    setTaskSettings({});
-    setTags([]);
-    setEvents([]);
-    setExpenses([]);
+    const timeoutId = window.setTimeout(() => {
+      setMealPlan({});
+      setShoppingList([]);
+      setNotifications([]);
+      setRecipes([]);
+      setWeekNotes('');
+      setCleaningNotes('');
+      setCleaningLogs([]);
+      setRoomTasks([]);
+      setTaskSettings({});
+      setTags([]);
+      setEvents([]);
+      setExpenses([]);
+    }, 0);
 
     const fetchSettings = async () => {
       try {
@@ -679,9 +703,12 @@ function App() {
           if (data.visibleSections) setVisibleSections(data.visibleSections);
           if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
         }
-      } catch (err) { }
+      } catch (error) {
+        console.error('Error loading profile settings:', error);
+      }
     };
     fetchSettings();
+    return () => window.clearTimeout(timeoutId);
   }, [activeProfile.id]);
 
   useEffect(() => {
@@ -771,7 +798,9 @@ function App() {
             await setDoc(doc(db, colPath('shoppingList'), item.id), item);
           }
           localStorage.removeItem('shoppingListData');
-        } catch (e) { }
+        } catch (error) {
+          console.error('Error migrating shopping list from localStorage:', error);
+        }
       }
       const savedMeals = localStorage.getItem('mealPlannerData');
       if (savedMeals) {
@@ -781,7 +810,9 @@ function App() {
             await setDoc(doc(db, colPath('mealPlans'), dateKey), plans[dateKey]);
           }
           localStorage.removeItem('mealPlannerData');
-        } catch (e) { }
+        } catch (error) {
+          console.error('Error migrating meal plan from localStorage:', error);
+        }
       }
 
       // One-time cleanup of stale test items
@@ -793,7 +824,7 @@ function App() {
     };
 
     migrationAndCleanup();
-  }, [activeProfile.id, colPath]); // Removed 'user' to ensure stability
+  }, [activeProfile.id, colPath, user]);
 
   // Real-time Firestore Listeners (Global/Static Collections)
   useEffect(() => {
@@ -848,7 +879,7 @@ function App() {
       unsubscribeEvents();
       unsubscribeExpenses();
     };
-  }, [activeProfile.id, colPath]); // REMOVED 'user' - ID and colPath are enough and more stable
+  }, [activeProfile.id, colPath, user]);
 
   // Sync meal plans for the viewed window (Current Month +/- 1)
   useEffect(() => {
@@ -866,7 +897,7 @@ function App() {
       }
     );
     return () => unsubscribeMeals();
-  }, [activeProfile.id, colPath, currentMonth]); // Removed 'user'
+  }, [activeProfile.id, colPath, currentMonth, user]);
 
   // Sync notes for the selected week
   useEffect(() => {
@@ -887,7 +918,7 @@ function App() {
     );
 
     return () => unsubscribeNotes();
-  }, [selectedWeekStart, activeProfile.id]);
+  }, [selectedWeekStart, activeProfile.id, colPath]);
 
   // Sync cleaning notes
   useEffect(() => {
@@ -908,7 +939,7 @@ function App() {
     );
 
     return () => unsubscribeCleaning();
-  }, [selectedWeekStart, activeProfile.id]);
+  }, [selectedWeekStart, activeProfile.id, colPath]);
 
   // Sync task settings
   useEffect(() => {
@@ -926,7 +957,7 @@ function App() {
       setTaskSettings(settings);
     });
     return () => unsubscribeSettings();
-  }, [activeProfile.id]);
+  }, [activeProfile.id, colPath]);
 
   // Sync cleaning logs
   useEffect(() => {
@@ -942,7 +973,7 @@ function App() {
       }
     );
     return () => unsubscribeLogs();
-  }, [activeProfile.id]);
+  }, [activeProfile.id, colPath]);
 
   // Sync room tasks — pure listener, no side-effects
   useEffect(() => {
@@ -1001,7 +1032,7 @@ function App() {
     };
 
     seedDefaults();
-  }, [activeProfile.id, colPath]); // Stripped down to most target dependencies
+  }, [activeProfile.id, activeProfile.isGiemmale, activeProfile.name, colPath]);
 
   const handleUpdateNotes = async (content: string) => {
     setWeekNotes(content);
@@ -1010,7 +1041,7 @@ function App() {
     try {
       await setDoc(doc(db, colPath('weekNotes'), weekKey), { content }, { merge: true });
       setTimeout(() => setIsSavingNotes(false), 800);
-    } catch (error: any) {
+    } catch (error) {
       console.error("[FIREBASE NOTES SAVE ERROR]:", error);
       setIsSavingNotes(false);
     }
@@ -1023,13 +1054,11 @@ function App() {
     try {
       await setDoc(doc(db, colPath('cleaningNotes'), weekKey), { content }, { merge: true });
       setTimeout(() => setIsSavingCleaningNotes(false), 800);
-    } catch (error: any) {
+    } catch (error) {
       console.error("[FIREBASE CLEANING NOTES SAVE ERROR]:", error);
       setIsSavingCleaningNotes(false);
     }
   };
-
-  const generateId = () => Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 
   const handleAddItem = async (e: React.FormEvent, category: 'supermarket' | 'home' | 'medicine' = 'supermarket') => {
     e.preventDefault();
@@ -1046,7 +1075,7 @@ function App() {
 
     try {
       await setDoc(doc(db, colPath('shoppingList'), newItem.id), newItem);
-    } catch (err: any) {
+    } catch (err) {
       console.error("[FIREBASE SET ERROR]:", err);
     }
   };
@@ -1061,13 +1090,13 @@ function App() {
     setNewItemText('');
     setShowSuggestions(false);
 
-    try { await setDoc(doc(db, colPath('shoppingList'), newItem.id), newItem); } catch (e: any) { console.error(e); }
+    try { await setDoc(doc(db, colPath('shoppingList'), newItem.id), newItem); } catch (e) { console.error(e); }
   };
 
   const toggleItem = async (id: string) => {
     const item = shoppingList.find(i => i.id === id);
     if (!item) return;
-    try { await updateDoc(doc(db, colPath('shoppingList'), id), { checked: !item.checked }); } catch (e: any) { console.error(e); }
+    try { await updateDoc(doc(db, colPath('shoppingList'), id), { checked: !item.checked }); } catch (e) { console.error(e); }
   };
 
   const deleteItem = async (id: string, e: React.MouseEvent) => {
@@ -1084,7 +1113,7 @@ function App() {
         timestamp: Date.now(),
         read: false
       });
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
     }
   };
@@ -1115,7 +1144,7 @@ function App() {
         read: false
       });
 
-    } catch (e: any) {
+    } catch (e) {
       console.error("[FIREBASE MEALS SET ERROR]:", e);
     }
   };
@@ -1142,7 +1171,7 @@ function App() {
         timestamp: Date.now(),
         read: false
       });
-    } catch (e: any) {
+    } catch (e) {
       console.error("[FIREBASE REMOVE ERROR]:", e);
     }
   };
@@ -1181,7 +1210,7 @@ function App() {
         timestamp: Date.now(),
         read: false
       });
-    } catch (e: any) {
+    } catch (e) {
       console.error("[FIREBASE UPDATE TEXT ERROR]:", e);
     }
   };
@@ -1247,9 +1276,10 @@ function App() {
           timestamp: Date.now(),
           read: false
         });
-      } catch (e: any) {
+      } catch (e) {
+        const error = e as RecipeSaveError;
         console.error("Error saving recipe:", e);
-        if (e?.code === 'out-of-range' || e?.message?.includes('too large')) {
+        if (error.code === 'out-of-range' || error.message?.includes('too large')) {
           alert("Errore: Il contenuto della ricetta è troppo grande per essere salvato.");
         } else {
           alert("Si è verificato un errore durante il salvataggio della ricetta.");
@@ -2017,20 +2047,20 @@ function App() {
           </div>
 
           <div className="nav-tabs">
-            {[
+            {([
               { id: 'home', label: getTabLabel('home'), icon: Home },
               { id: 'planner', label: 'Calendario Menù', icon: CalendarIcon },
               { id: 'shopping', label: 'Lista Spesa', icon: ShoppingCart },
               { id: 'recipes', label: 'Ricette', icon: BookOpen },
               { id: 'cleaning', label: 'Pulizie', icon: Sparkles },
               { id: 'finance', label: 'Finanze', icon: Wallet },
-            ].filter(t => t.id === 'home' || visibleSections[t.id]).map(tab => (
+            ] as Array<{ id: Exclude<AppTab, 'settings'>; label: string; icon: typeof Home }>).filter(t => t.id === 'home' || visibleSections[t.id]).map(tab => (
               <button
                 key={tab.id}
                 className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
-                onMouseEnter={() => preloadSection(tab.id as AppTab)}
-                onFocus={() => preloadSection(tab.id as AppTab)}
-                onClick={() => setActiveTab(tab.id as any)}
+                onMouseEnter={() => preloadSection(tab.id)}
+                onFocus={() => preloadSection(tab.id)}
+                onClick={() => setActiveTab(tab.id)}
                 aria-label={`Apri ${tab.label}`}
               >
                 <tab.icon size={20} strokeWidth={2.5} />

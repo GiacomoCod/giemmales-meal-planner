@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { updateProfile, updatePassword as firebaseUpdatePassword } from 'firebase/auth';
-import type { User } from 'firebase/auth';
+import type { AuthError, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getPushStatus, isPushSupportedInBrowser, subscribeToPush, unsubscribeFromPush } from '../pushNotifications';
@@ -119,7 +119,7 @@ export function SettingsSection({
         if (!mounted) return;
         setPushEnabled(status.subscribed);
         setPushPermission(status.permission);
-      } catch (err) {
+      } catch {
         if (!mounted) return;
         setPushEnabled(false);
         setPushPermission(isPushSupportedInBrowser() ? Notification.permission : 'unsupported');
@@ -230,7 +230,7 @@ export function SettingsSection({
       await setDoc(doc(db, colName, 'profile'), { avatarBase64: photoUrl }, { merge: true });
 
       setSuccessMsg('Profilo aggiornato con successo!');
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setErrorMsg("Errore durante l'aggiornamento del profilo.");
     } finally {
@@ -252,9 +252,10 @@ export function SettingsSection({
       await firebaseUpdatePassword(user, newPassword);
       setSuccessMsg('Password aggiornata con successo!');
       setNewPassword('');
-    } catch (err: any) {
+    } catch (err) {
+      const authError = err as AuthError;
       console.error(err);
-      if (err.code === 'auth/requires-recent-login') {
+      if (authError.code === 'auth/requires-recent-login') {
         setErrorMsg("Devi uscire e fare di nuovo l'accesso per cambiare password.");
       } else {
         setErrorMsg("Errore durante l'aggiornamento della password.");

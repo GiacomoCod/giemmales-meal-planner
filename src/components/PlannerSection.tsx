@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, Settings, Trash2, MoreVertical, Users, Calendar as CalendarIcon } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, addDays } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -11,6 +11,10 @@ import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { useInViewport } from '../hooks/useInViewport';
 import spaghettiImg from '../assets/spaghetti-3d-cutout.png';
 import './PlannerSection.css';
+
+type DayCardStyle = CSSProperties & {
+  '--day-bg': string;
+};
 
 interface PlannerSectionProps {
   isMobile: boolean;
@@ -134,7 +138,7 @@ export function PlannerSection({
                 const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
 
                 return (
-                  <div key={dateKey} className="mobile-day-card" style={{ '--day-bg': PASTEL_VARS[cssIndex] } as any}>
+                  <div key={dateKey} className="mobile-day-card" style={{ '--day-bg': PASTEL_VARS[cssIndex] } as DayCardStyle}>
                     <div className="mobile-day-header">
                        <span className="m-day-name">{dayName}</span>
                        <span className="m-day-num">{dayNum}</span>
@@ -377,7 +381,7 @@ export function PlannerSection({
             const cssIndex = jsDay === 0 ? 6 : jsDay - 1;
 
             return (
-              <div key={dateKey} className="day-card" style={{ '--day-bg': PASTEL_VARS[cssIndex] } as any}>
+              <div key={dateKey} className="day-card" style={{ '--day-bg': PASTEL_VARS[cssIndex] } as DayCardStyle}>
                 <h2 className="day-title">{dayName}</h2>
                 <div className="meals-container">
                   {MEALS.map((meal) => (

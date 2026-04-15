@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Home, Lock, ArrowRight, AlertTriangle, User as UserIcon } from 'lucide-react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, type AuthError } from 'firebase/auth';
 import { auth } from '../firebase';
 import './Login.css';
 
@@ -68,9 +68,10 @@ export function Login() {
         }
         await createUserWithEmailAndPassword(auth, fakeEmail, password);
       }
-    } catch (err: any) {
+    } catch (err) {
+      const authError = err as AuthError;
       console.error("[AUTH ERROR]:", err);
-      setError(getAuthErrorMessage(err?.code));
+      setError(getAuthErrorMessage(authError.code));
     } finally {
       setLoading(false);
     }

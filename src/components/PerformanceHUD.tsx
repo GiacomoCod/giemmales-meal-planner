@@ -25,20 +25,19 @@ const INITIAL_SNAPSHOT: PerfSnapshot = {
 };
 
 export function PerformanceHUD({ activeTab }: PerformanceHUDProps) {
-  const [enabled, setEnabled] = useState(false);
+  const [enabled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const queryEnabled = params.get('perf') === '1';
+    const storedEnabled = window.localStorage.getItem('vp_perf_hud') === '1';
+    return queryEnabled || storedEnabled;
+  });
   const [snapshot, setSnapshot] = useState<PerfSnapshot>(INITIAL_SNAPSHOT);
   const framesRef = useRef<number[]>([]);
   const lastFrameTimeRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const longTaskCountRef = useRef(0);
   const worstLongTaskRef = useRef(0);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const queryEnabled = params.get('perf') === '1';
-    const storedEnabled = window.localStorage.getItem('vp_perf_hud') === '1';
-    setEnabled(queryEnabled || storedEnabled);
-  }, []);
 
   useEffect(() => {
     if (!enabled) return;

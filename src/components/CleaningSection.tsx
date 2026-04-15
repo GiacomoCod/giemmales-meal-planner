@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, Sparkles, ChevronRight as ChevronRightIcon, Plus, Check, X, Calendar as CalendarIcon, RefreshCw, Trash2, Minus, MoreVertical, List, Settings, Users, Pencil, History } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, parseISO } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -10,6 +10,14 @@ import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { useInViewport } from '../hooks/useInViewport';
 import cleaningImg from '../assets/cleaning-3d-cutout.png';
 import './CleaningSection.css';
+
+type BubbleStyle = CSSProperties & {
+  '--size': string;
+  '--left': string;
+  '--delay': string;
+  '--duration': string;
+  '--drift': string;
+};
 
 interface CleaningSectionProps {
   currentMonth: Date;
@@ -67,11 +75,17 @@ export function CleaningSection({
   const [managerPerformerId, setManagerPerformerId] = useState('');
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [logToDeleteId, setLogToDeleteId] = useState<string | null>(null);
+  const [nowTs, setNowTs] = useState(() => Date.now());
   const { ref: heroGraphicRef, isInView: isHeroGraphicInView } = useInViewport<HTMLDivElement>();
   const { transform: tasksSheetTransform, handlers: tasksSheetHandlers } = useSwipeToDismiss(() => {
     setShowTasksSheet(false);
     setShowMoreMenu(false);
   }, 100, showTasksSheet);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setNowTs(Date.now()), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [selectedRoom, roomTasks, cleaningLogs, taskSettings]);
 
   const getTaskUrgency = (logDate: string, taskType: string, now: number) => {
     if (!logDate) return { progress: 0, color: '#48bb78', daysRemaining: null };
@@ -215,11 +229,11 @@ export function CleaningSection({
 
               <div ref={heroGraphicRef} className={`cleaning-hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
                 <div className="cleaning-bubbles-container">
-                  <div className="cleaning-bubble" style={{ '--size': '20px', '--left': '10%', '--delay': '0s', '--duration': '4s', '--drift': '20px' } as any}></div>
-                  <div className="cleaning-bubble" style={{ '--size': '15px', '--left': '30%', '--delay': '1s', '--duration': '5s', '--drift': '-15px' } as any}></div>
-                  <div className="cleaning-bubble" style={{ '--size': '25px', '--left': '70%', '--delay': '0.5s', '--duration': '4.5s', '--drift': '10px' } as any}></div>
-                  <div className="cleaning-bubble" style={{ '--size': '10px', '--left': '85%', '--delay': '2s', '--duration': '6s', '--drift': '-10px' } as any}></div>
-                  <div className="cleaning-bubble" style={{ '--size': '18px', '--left': '50%', '--delay': '1.5s', '--duration': '3.5s', '--drift': '15px' } as any}></div>
+                  <div className="cleaning-bubble" style={{ '--size': '20px', '--left': '10%', '--delay': '0s', '--duration': '4s', '--drift': '20px' } as BubbleStyle}></div>
+                  <div className="cleaning-bubble" style={{ '--size': '15px', '--left': '30%', '--delay': '1s', '--duration': '5s', '--drift': '-15px' } as BubbleStyle}></div>
+                  <div className="cleaning-bubble" style={{ '--size': '25px', '--left': '70%', '--delay': '0.5s', '--duration': '4.5s', '--drift': '10px' } as BubbleStyle}></div>
+                  <div className="cleaning-bubble" style={{ '--size': '10px', '--left': '85%', '--delay': '2s', '--duration': '6s', '--drift': '-10px' } as BubbleStyle}></div>
+                  <div className="cleaning-bubble" style={{ '--size': '18px', '--left': '50%', '--delay': '1.5s', '--duration': '3.5s', '--drift': '15px' } as BubbleStyle}></div>
                 </div>
                 <div className="floating-kit-wrapper">
                   <img
@@ -314,7 +328,6 @@ export function CleaningSection({
               {/* Task List */}
               <div className="task-cards-list">
                 {(() => {
-                  const now = Date.now();
                   return roomTasks
                     .filter(t => t.roomId === selectedRoom)
                     .sort((a, b) => a.createdAt - b.createdAt)
@@ -324,7 +337,7 @@ export function CleaningSection({
                       );
                       const latestLog = taskLogs[0] || null;
                       const latestPerformer = latestLog ? getLogPerformer(latestLog) : null;
-                      const { progress, color, daysRemaining } = getTaskUrgency(latestLog?.date || '', task.taskName, now);
+                      const { progress, color, daysRemaining } = getTaskUrgency(latestLog?.date || '', task.taskName, nowTs);
                       const isOverdue = progress >= 100;
 
                       return (

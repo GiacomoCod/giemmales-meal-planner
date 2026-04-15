@@ -5,11 +5,13 @@ import { useState, useEffect } from 'react';
  * Defaults to max-width: 768px for mobile detection.
  */
 export const useMediaQuery = (query: string = '(max-width: 768px)') => {
-  const [matches, setMatches] = useState<boolean>(false);
+  const [matches, setMatches] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(query).matches;
+  });
 
   useEffect(() => {
     const media = window.matchMedia(query);
-    setMatches(media.matches);
     const listener = (event: MediaQueryListEvent) => setMatches(event.matches);
     media.addEventListener('change', listener);
     return () => media.removeEventListener('change', listener);

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, type CSSProperties } from 'react';
 import {
   Wallet, Plus, Trash2, Check, X, ChevronLeft, ChevronRight,
   TrendingUp, PieChart,
@@ -49,19 +49,33 @@ function PieChart2D({ data }: { data: { label: string; value: number; color: str
   const CX = SIZE / 2;
   const CY = SIZE / 2;
 
-  let cumAngle = -Math.PI / 2;
-  const slices = data.filter(d => d.value > 0).map(d => {
-    const ratio = d.value / total;
-    const startAngle = cumAngle;
-    const endAngle = cumAngle + ratio * 2 * Math.PI;
-    cumAngle = endAngle;
-    const x1 = CX + R * Math.cos(startAngle);
-    const y1 = CY + R * Math.sin(startAngle);
-    const x2 = CX + R * Math.cos(endAngle);
-    const y2 = CY + R * Math.sin(endAngle);
-    const largeArc = ratio > 0.5 ? 1 : 0;
-    return { ...d, ratio, path: `M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${largeArc} 1 ${x2} ${y2} Z` };
-  });
+  const sliceAccumulator = data
+    .filter((d) => d.value > 0)
+    .reduce<{
+      nextAngle: number;
+      slices: Array<{ label: string; value: number; color: string; ratio: number; path: string }>;
+    }>(
+      (acc, d) => {
+        const startAngle = acc.nextAngle;
+        const ratio = d.value / total;
+        const endAngle = startAngle + ratio * 2 * Math.PI;
+        const x1 = CX + R * Math.cos(startAngle);
+        const y1 = CY + R * Math.sin(startAngle);
+        const x2 = CX + R * Math.cos(endAngle);
+        const y2 = CY + R * Math.sin(endAngle);
+        const largeArc = ratio > 0.5 ? 1 : 0;
+
+        acc.slices.push({
+          ...d,
+          ratio,
+          path: `M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${largeArc} 1 ${x2} ${y2} Z`
+        });
+        acc.nextAngle = endAngle;
+        return acc;
+      },
+      { nextAngle: -Math.PI / 2, slices: [] }
+    );
+  const slices = sliceAccumulator.slices;
 
   return (
     <div className="f-pie-container">
@@ -125,6 +139,15 @@ interface FinanceSectionProps {
   isMobile: boolean;
 }
 
+type FinanceCoinStyle = CSSProperties & {
+  '--size': string;
+  '--left': string;
+  '--top': string;
+  '--delay': string;
+  '--duration': string;
+  '--drift': string;
+};
+
 /* ============================================================
    COMPONENT
    ============================================================ */
@@ -166,7 +189,7 @@ export function FinanceSection({
       const d = parseISO(e.date);
       return d >= monthStart && d <= monthEnd;
     }),
-    [expenses, viewMonth]
+    [expenses, monthEnd, monthStart]
   );
 
   const spendingExpenses = useMemo(() => 
@@ -254,7 +277,7 @@ export function FinanceSection({
         return d >= monthStart && d <= monthEnd;
       })
       .sort((a, b) => b.timestamp - a.timestamp);
-  }, [expenses, viewMonth]);
+  }, [expenses, monthEnd, monthStart]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -337,10 +360,10 @@ export function FinanceSection({
 
           <div ref={heroGraphicRef} className={`finance-hero-graphic motion-target ${isHeroGraphicInView ? '' : 'is-idle'}`}>
             <div className="finance-coins-container">
-              <div className="finance-coin" style={{ '--size': '40px', '--left': '10%', '--top': '20%', '--delay': '0s', '--duration': '4s', '--drift': '20px' } as any}></div>
-              <div className="finance-coin" style={{ '--size': '30px', '--left': '80%', '--top': '15%', '--delay': '1s', '--duration': '5s', '--drift': '-15px' } as any}></div>
-              <div className="finance-coin" style={{ '--size': '35px', '--left': '40%', '--top': '70%', '--delay': '0.5s', '--duration': '4.5s', '--drift': '10px' } as any}></div>
-              <div className="finance-coin" style={{ '--size': '25px', '--left': '65%', '--top': '60%', '--delay': '1.5s', '--duration': '6s', '--drift': '-12px' } as any}></div>
+              <div className="finance-coin" style={{ '--size': '40px', '--left': '10%', '--top': '20%', '--delay': '0s', '--duration': '4s', '--drift': '20px' } as FinanceCoinStyle}></div>
+              <div className="finance-coin" style={{ '--size': '30px', '--left': '80%', '--top': '15%', '--delay': '1s', '--duration': '5s', '--drift': '-15px' } as FinanceCoinStyle}></div>
+              <div className="finance-coin" style={{ '--size': '35px', '--left': '40%', '--top': '70%', '--delay': '0.5s', '--duration': '4.5s', '--drift': '10px' } as FinanceCoinStyle}></div>
+              <div className="finance-coin" style={{ '--size': '25px', '--left': '65%', '--top': '60%', '--delay': '1.5s', '--duration': '6s', '--drift': '-12px' } as FinanceCoinStyle}></div>
             </div>
             <div className="floating-piggy-wrapper">
               <img
