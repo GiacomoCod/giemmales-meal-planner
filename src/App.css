@@ -1255,7 +1255,7 @@ html.pager-gesture-lock body {
   overflow: hidden;
   touch-action: pan-y pinch-zoom;
   overscroll-behavior-x: contain;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
   transition: height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 

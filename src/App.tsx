@@ -467,7 +467,12 @@ function App() {
   }, [isMobile, shouldIgnorePagerSwipe, showNotifications]);
 
   const handlePagerTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    if (!isMobile || showNotifications || e.touches.length !== 1) return;
+    if (!isMobile || showNotifications || e.touches.length !== 1) {
+      if (isPagerDragging) {
+        resetPagerDrag();
+      }
+      return;
+    }
     const touchState = pagerTouchStateRef.current;
     if (!touchState) return;
 
@@ -512,12 +517,17 @@ function App() {
         : deltaX;
 
     schedulePagerDragOffset(resistedDeltaX);
-  }, [activeTab, availableTabs, isMobile, schedulePagerDragOffset, showNotifications]);
+  }, [activeTab, availableTabs, isMobile, isPagerDragging, resetPagerDrag, schedulePagerDragOffset, showNotifications]);
 
   const handlePagerTouchEnd = useCallback(() => {
-    if (!isMobile || showNotifications) return;
+    if (!isMobile) return;
     const touchState = pagerTouchStateRef.current;
-    if (!touchState) return;
+    if (!touchState) {
+      if (isPagerDragging) {
+        resetPagerDrag();
+      }
+      return;
+    }
 
     const activeTabIndex = availableTabs.indexOf(activeTab);
     const pagerWidth = pagerViewportRef.current?.clientWidth ?? window.innerWidth;
@@ -539,7 +549,40 @@ function App() {
     }
 
     resetPagerDrag();
-  }, [activeTab, availableTabs, isMobile, resetPagerDrag, setActiveTab, showNotifications]);
+  }, [activeTab, availableTabs, isMobile, isPagerDragging, resetPagerDrag, setActiveTab]);
+
+  useEffect(() => {
+    if (!isPagerDragging) return;
+
+    const forceResetPagerDrag = () => {
+      resetPagerDrag();
+    };
+
+    const forceResetWhenHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        forceResetPagerDrag();
+      }
+    };
+
+    const onWindowTouchEnd = () => forceResetPagerDrag();
+    const onWindowTouchCancel = () => forceResetPagerDrag();
+    const onWindowBlur = () => forceResetPagerDrag();
+    const onWindowPageHide = () => forceResetPagerDrag();
+
+    window.addEventListener('touchend', onWindowTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onWindowTouchCancel, { passive: true });
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('pagehide', onWindowPageHide);
+    document.addEventListener('visibilitychange', forceResetWhenHidden);
+
+    return () => {
+      window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('touchcancel', onWindowTouchCancel);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('pagehide', onWindowPageHide);
+      document.removeEventListener('visibilitychange', forceResetWhenHidden);
+    };
+  }, [isPagerDragging, resetPagerDrag]);
 
   useEffect(() => {
     return () => {
