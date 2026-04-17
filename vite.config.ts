@@ -59,10 +59,12 @@ export default defineConfig({
       // Soglie per skip ottimizzazione (solo stringhe, no RegExp)
       exclude: [
         'favicon.ico',
+        'favicon.svg',
         'icon-192.png',
         'icon-512.png',
         'apple-touch-icon.png',
-        'mask-icon.svg'
+        'mask-icon.svg',
+        'icons.svg'
       ],
       // Cache per build successive più veloci
       cache: true,
