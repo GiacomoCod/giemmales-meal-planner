@@ -1,51 +1,75 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface UseInViewportOptions {
   rootMargin?: string;
   threshold?: number | number[];
   initialInView?: boolean;
+  onChange?: (isInView: boolean) => void;
 }
 
+/**
+ * Hook ottimizzato per rilevare quando un elemento è nel viewport
+ *
+ * Ottimizzazioni:
+ * - Cleanup robusto con disconnessione observer
+ * - Callback onChange per effetti collaterali esterni
+ * - Gestione sicura SSR (IntersectionObserver undefined)
+ * - Memoizzazione callback per evitare ricreazioni
+ *
+ * @param rootMargin - Margine attorno al viewport (default: '160px 0px')
+ * @param threshold - Soglia di visibilità (default: 0.01)
+ * @param initialInView - Stato iniziale (default: true)
+ * @param onChange - Callback opzionale chiamata quando cambia lo stato
+ */
 export function useInViewport<T extends HTMLElement>({
   rootMargin = '160px 0px',
   threshold = 0.01,
-  initialInView = true
+  initialInView = true,
+  onChange
 }: UseInViewportOptions = {}) {
   const ref = useRef<T | null>(null);
   const [isInView, setIsInView] = useState(initialInView || typeof IntersectionObserver === 'undefined');
+  const previousInViewRef = useRef<boolean>(initialInView);
+
+  // Callback memoizzata per gestire il cambio di stato
+  const handleInViewChange = useCallback((newIsInView: boolean) => {
+    setIsInView(newIsInView);
+    
+    // Chiama onChange solo se lo stato è cambiato effettivamente
+    if (previousInViewRef.current !== newIsInView && onChange) {
+      onChange(newIsInView);
+      previousInViewRef.current = newIsInView;
+    }
+  }, [onChange]);
 
   useEffect(() => {
     const node = ref.current;
-    if (!node) return;
+    
+    // SSR guard o browser senza IntersectionObserver
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      return;
+    }
 
-    if (typeof IntersectionObserver === 'undefined') return;
-
-    let frameId: number | null = null;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        const nextValue = entry.isIntersecting || entry.intersectionRatio > 0;
-
-        if (frameId !== null) {
-          window.cancelAnimationFrame(frameId);
-        }
-
-        frameId = window.requestAnimationFrame(() => {
-          setIsInView(nextValue);
-          frameId = null;
-        });
+        const newIsInView = entry.isIntersecting || entry.intersectionRatio > 0;
+        handleInViewChange(newIsInView);
       },
-      { rootMargin, threshold }
+      { 
+        rootMargin, 
+        threshold: Array.isArray(threshold) ? threshold : [threshold],
+        root: null
+      }
     );
 
     observer.observe(node);
 
+    // Cleanup robusto: disconnette tutte le osservazioni
     return () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
       observer.disconnect();
+      observer.takeRecords(); // Svuota il queue per evitare callback pending
     };
-  }, [rootMargin, threshold]);
+  }, [rootMargin, threshold, handleInViewChange]);
 
   return { ref, isInView };
 }

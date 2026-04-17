@@ -189,6 +189,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   width={1024}
                   height={1024}
                   decoding="async"
+                  loading="lazy"
                 />
                 <div className="house-shadow"></div>
               </div>

@@ -3,7 +3,7 @@ import { ShoppingCart, Trash2, Calendar as CalendarIcon, Bell, BookOpen, Sparkle
 
 import { startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth, format, addMonths, subMonths } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, limit, orderBy, documentId, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, query, where, getDocs, limit, orderBy, getDoc } from 'firebase/firestore';
 import { parseISO } from 'date-fns';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -16,6 +16,99 @@ import { useMediaQuery } from './hooks/useMediaQuery';
 import { BottomNavigation } from './components/BottomNavigation';
 import { PerformanceHUD } from './components/PerformanceHUD';
 import { buildRoomTaskKey, dedupeRoomTasks, hasRoomTask, sanitizeTaskName } from './utils/cleaningTasks';
+import { deepEqual, mealPlanEqual } from './utils/comparisons';
+import { useFirestoreListWithCache } from './hooks/useFirestoreListWithCache';
+import { useNotificationsWithCache, useMealPlansWithCache } from './hooks/useFirestoreCachedCollections';
+import { useComparisonsWorker } from './hooks/useComparisonsWorker';
+import { clearProfileCache, startAutoCleanup, performProactiveCleanup } from './utils/idbCache';
+import { isIOS, isSafari } from './utils/safariOptimizations';
+
+/**
+ * Funzioni pure per la formattazione delle notifiche.
+ * Spostate fuori dal componente per evitare ricreazioni ad ogni render.
+ */
+const stripKnownNotificationEmoji = (text: string) => {
+  return String(text || '').replace(/^(🔔|📅|✨|🛒|💊|🏠|🍽️)\s*/, '');
+};
+
+const stripPushTitlePrefix = (text: string) => {
+  const value = String(text || '');
+  if (!value.includes(' — ')) return value;
+
+  const [prefix, ...rest] = value.split(' — ');
+  if (rest.length === 0) return value;
+
+  const normalizedPrefix = prefix.trim().toLowerCase();
+  const isKnownPushTitle =
+    normalizedPrefix === 'planner di fiducia' ||
+    normalizedPrefix.startsWith('promemoria ') ||
+    normalizedPrefix.startsWith('pianificazione ');
+
+  if (!isKnownPushTitle) return value;
+  return rest.join(' — ').trim();
+};
+
+const inferPushCategoryFromText = (text: string): 'events' | 'cleaning' | 'shopping' | 'weeklyMenu' | null => {
+  const value = String(text || '').toLowerCase();
+  if (!value) return null;
+
+  if (value.includes('prossima settimana') || value.includes('menu')) return 'weeklyMenu';
+  if (value.includes('mansioni') || value.includes("c'è da") || value.includes('casa ha bisogno di te')) return 'cleaning';
+  if (value.includes('spesa') || value.includes('comprare') || value.includes('supermercato') || value.includes('farmaci')) return 'shopping';
+  if (value.includes('agenda') || value.includes('eventi') || value.includes('evento')) return 'events';
+  return null;
+};
+
+const getPushEmoji = (notification: NotificationItem) => {
+  const pushType = notification.type;
+  const reminderType = notification.reminderType;
+  const explicitType = notification.notificationType;
+
+  const fromExplicitType = (() => {
+    if (explicitType === 'events') return '📅';
+    if (explicitType === 'cleaning') return '✨';
+    if (explicitType === 'shopping') return '🛒';
+    if (explicitType === 'weeklyMenu') return '🍽️';
+    return null;
+  })();
+  if (fromExplicitType) return fromExplicitType;
+
+  if (pushType === 'events-due') return '📅';
+  if (pushType === 'cleaning-due') return '✨';
+  if (pushType === 'shopping-reminder') return '🛒';
+  if (pushType === 'weekly-menu-reminder') return '🍽️';
+
+  if (pushType === 'push-reminder') {
+    if (reminderType === 'shopping') return '🛒';
+    if (reminderType === 'meal-plan' || reminderType === 'weekly-plan') return '🍽️';
+    return '🔔';
+  }
+
+  if (pushType === 'push-test') {
+    const inferred = inferPushCategoryFromText(notification.text);
+    if (inferred === 'events') return '📅';
+    if (inferred === 'cleaning') return '✨';
+    if (inferred === 'shopping') return '🛒';
+    if (inferred === 'weeklyMenu') return '🍽️';
+    return '🔔';
+  }
+
+  const inferred = inferPushCategoryFromText(notification.text);
+  if (inferred === 'events') return '📅';
+  if (inferred === 'cleaning') return '✨';
+  if (inferred === 'shopping') return '🛒';
+  if (inferred === 'weeklyMenu') return '🍽️';
+  return null;
+};
+
+const formatNotificationText = (notification: NotificationItem) => {
+  const isPushNotification = notification.source === 'push' || Boolean(notification.type);
+  const textWithoutEmoji = stripKnownNotificationEmoji(notification.text);
+  const baseText = isPushNotification ? stripPushTitlePrefix(textWithoutEmoji) : textWithoutEmoji;
+  const emoji = isPushNotification ? getPushEmoji(notification) : null;
+  if (!emoji) return baseText;
+  return `${emoji} ${baseText}`;
+};
 
 type AppTab = 'home' | 'planner' | 'shopping' | 'recipes' | 'cleaning' | 'finance' | 'settings';
 type ReorderableAppTab = Exclude<AppTab, 'home' | 'settings'>;
@@ -57,64 +150,29 @@ const normalizeTabOrder = (rawValue: unknown): ReorderableAppTab[] => {
   return nextOrder;
 };
 
-const loadHomeSection = () => import('./components/HomeSection');
-const loadPlannerSection = () => import('./components/PlannerSection');
-const loadShoppingSection = () => import('./components/ShoppingListSection');
-const loadRecipesSection = () => import('./components/RecipesSection');
-const loadCleaningSection = () => import('./components/CleaningSection');
-const loadFinanceSection = () => import('./components/FinanceSection');
-const loadSettingsSection = () => import('./components/SettingsSection');
-const loadLogin = () => import('./components/Login');
+/**
+ * Loader dinamici per le sezioni.
+ * Ogni loader è una funzione separata che viene chiamata solo quando necessario.
+ * Questo permette a Vite di creare chunk separati per ogni sezione.
+ */
+const loadHomeSection = () => import('./components/HomeSection').then(m => ({ default: m.HomeSection }));
+const loadPlannerSection = () => import('./components/PlannerSection').then(m => ({ default: m.PlannerSection }));
+const loadShoppingSection = () => import('./components/ShoppingListSection').then(m => ({ default: m.ShoppingListSection }));
+const loadRecipesSection = () => import('./components/RecipesSection').then(m => ({ default: m.RecipesSection }));
+const loadCleaningSection = () => import('./components/CleaningSection').then(m => ({ default: m.CleaningSection }));
+const loadFinanceSection = () => import('./components/FinanceSection').then(m => ({ default: m.FinanceSection }));
+const loadSettingsSection = () => import('./components/SettingsSection').then(m => ({ default: m.SettingsSection }));
+const loadLogin = () => import('./components/Login').then(m => ({ default: m.Login }));
 
-const HomeSection = lazy(async () => {
-  const module = await loadHomeSection();
-  return { default: module.HomeSection };
-});
-
-const PlannerSection = lazy(async () => {
-  const module = await loadPlannerSection();
-  return { default: module.PlannerSection };
-});
-
-const ShoppingListSection = lazy(async () => {
-  const module = await loadShoppingSection();
-  return { default: module.ShoppingListSection };
-});
-
-const RecipesSection = lazy(async () => {
-  const module = await loadRecipesSection();
-  return { default: module.RecipesSection };
-});
-
-const CleaningSection = lazy(async () => {
-  const module = await loadCleaningSection();
-  return { default: module.CleaningSection };
-});
-
-const FinanceSection = lazy(async () => {
-  const module = await loadFinanceSection();
-  return { default: module.FinanceSection };
-});
-
-const SettingsSection = lazy(async () => {
-  const module = await loadSettingsSection();
-  return { default: module.SettingsSection };
-});
-
-const Login = lazy(async () => {
-  const module = await loadLogin();
-  return { default: module.Login };
-});
-
-const SECTION_PRELOADERS: Record<AppTab, () => Promise<unknown>> = {
-  home: loadHomeSection,
-  planner: loadPlannerSection,
-  shopping: loadShoppingSection,
-  recipes: loadRecipesSection,
-  cleaning: loadCleaningSection,
-  finance: loadFinanceSection,
-  settings: loadSettingsSection
-};
+// Componenti lazy-loaded: vengono caricati solo quando renderizzati
+const HomeSection = lazy(loadHomeSection);
+const PlannerSection = lazy(loadPlannerSection);
+const ShoppingListSection = lazy(loadShoppingSection);
+const RecipesSection = lazy(loadRecipesSection);
+const CleaningSection = lazy(loadCleaningSection);
+const FinanceSection = lazy(loadFinanceSection);
+const SettingsSection = lazy(loadSettingsSection);
+const Login = lazy(loadLogin);
 
 function SectionFallback() {
   return (
@@ -222,6 +280,11 @@ function App() {
   const [isDeletingAllInProgress, setIsDeletingAllInProgress] = useState(false);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasSeededRef = useRef<Set<string>>(new Set());
+  
+  // Worker per comparazioni (usato solo per oggetti grandi)
+  const { isReady: workerReady } = useComparisonsWorker();
+  
+  // Per dedupe room tasks: useMemo è sufficiente (array piccoli)
   const uniqueRoomTasks = useMemo(() => dedupeRoomTasks(roomTasks), [roomTasks]);
   const pagerViewportRef = useRef<HTMLDivElement>(null);
   const pagerTransitionFrameRef = useRef<number | null>(null);
@@ -238,8 +301,20 @@ function App() {
   const tabScrollPositionsRef = useRef<Record<string, number>>({});
   const previousActiveTabRef = useRef<AppTab>('home');
 
+  /**
+   * Preload di una sezione specifica.
+   * Chiama il loader corrispondente per avviare il caricamento del chunk.
+   */
   const preloadSection = useCallback((tab: AppTab) => {
-    void SECTION_PRELOADERS[tab]();
+    switch (tab) {
+      case 'home': void loadHomeSection(); break;
+      case 'planner': void loadPlannerSection(); break;
+      case 'shopping': void loadShoppingSection(); break;
+      case 'recipes': void loadRecipesSection(); break;
+      case 'cleaning': void loadCleaningSection(); break;
+      case 'finance': void loadFinanceSection(); break;
+      case 'settings': void loadSettingsSection(); break;
+    }
   }, []);
 
   const getTabLabel = useCallback((tab: AppTab) => TAB_LABELS[tab], []);
@@ -325,89 +400,6 @@ function App() {
     };
   }, [preferredPrefetchTabs, preloadSection]);
 
-  const stripKnownNotificationEmoji = useCallback((text: string) => {
-    return String(text || '').replace(/^(🔔|📅|✨|🛒|💊|🏠|🍽️)\s*/, '');
-  }, []);
-
-  const stripPushTitlePrefix = useCallback((text: string) => {
-    const value = String(text || '');
-    if (!value.includes(' — ')) return value;
-
-    const [prefix, ...rest] = value.split(' — ');
-    if (rest.length === 0) return value;
-
-    const normalizedPrefix = prefix.trim().toLowerCase();
-    const isKnownPushTitle =
-      normalizedPrefix === 'planner di fiducia' ||
-      normalizedPrefix.startsWith('promemoria ') ||
-      normalizedPrefix.startsWith('pianificazione ');
-
-    if (!isKnownPushTitle) return value;
-    return rest.join(' — ').trim();
-  }, []);
-
-  const inferPushCategoryFromText = useCallback((text: string): 'events' | 'cleaning' | 'shopping' | 'weeklyMenu' | null => {
-    const value = String(text || '').toLowerCase();
-    if (!value) return null;
-
-    if (value.includes('prossima settimana') || value.includes('menu')) return 'weeklyMenu';
-    if (value.includes('mansioni') || value.includes("c'è da") || value.includes('casa ha bisogno di te')) return 'cleaning';
-    if (value.includes('spesa') || value.includes('comprare') || value.includes('supermercato') || value.includes('farmaci')) return 'shopping';
-    if (value.includes('agenda') || value.includes('eventi') || value.includes('evento')) return 'events';
-    return null;
-  }, []);
-
-  const getPushEmoji = useCallback((notification: NotificationItem) => {
-    const pushType = notification.type;
-    const reminderType = notification.reminderType;
-    const explicitType = notification.notificationType;
-
-    const fromExplicitType = (() => {
-      if (explicitType === 'events') return '📅';
-      if (explicitType === 'cleaning') return '✨';
-      if (explicitType === 'shopping') return '🛒';
-      if (explicitType === 'weeklyMenu') return '🍽️';
-      return null;
-    })();
-    if (fromExplicitType) return fromExplicitType;
-
-    if (pushType === 'events-due') return '📅';
-    if (pushType === 'cleaning-due') return '✨';
-    if (pushType === 'shopping-reminder') return '🛒';
-    if (pushType === 'weekly-menu-reminder') return '🍽️';
-
-    if (pushType === 'push-reminder') {
-      if (reminderType === 'shopping') return '🛒';
-      if (reminderType === 'meal-plan' || reminderType === 'weekly-plan') return '🍽️';
-      return '🔔';
-    }
-
-    if (pushType === 'push-test') {
-      const inferred = inferPushCategoryFromText(notification.text);
-      if (inferred === 'events') return '📅';
-      if (inferred === 'cleaning') return '✨';
-      if (inferred === 'shopping') return '🛒';
-      if (inferred === 'weeklyMenu') return '🍽️';
-      return '🔔';
-    }
-
-    const inferred = inferPushCategoryFromText(notification.text);
-    if (inferred === 'events') return '📅';
-    if (inferred === 'cleaning') return '✨';
-    if (inferred === 'shopping') return '🛒';
-    if (inferred === 'weeklyMenu') return '🍽️';
-    return null;
-  }, [inferPushCategoryFromText]);
-
-  const formatNotificationText = useCallback((notification: NotificationItem) => {
-    const isPushNotification = notification.source === 'push' || Boolean(notification.type);
-    const textWithoutEmoji = stripKnownNotificationEmoji(notification.text);
-    const baseText = isPushNotification ? stripPushTitlePrefix(textWithoutEmoji) : textWithoutEmoji;
-    const emoji = isPushNotification ? getPushEmoji(notification) : null;
-    if (!emoji) return baseText;
-    return `${emoji} ${baseText}`;
-  }, [getPushEmoji, stripKnownNotificationEmoji, stripPushTitlePrefix]);
-  
   // Refs for closing dropdowns when clicking outside
   const profileDropdownRef = useRef<HTMLDivElement>(null);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
@@ -716,6 +708,7 @@ function App() {
     };
   }, [isPagerDragging]);
 
+  // Altezza pannello attivo per mobile
   useEffect(() => {
     if (!isMobile) {
       const timeoutId = window.setTimeout(() => setActivePanelHeight(null), 0);
@@ -813,10 +806,10 @@ function App() {
 
   const handleDeleteAllWithUndo = () => {
     if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-    
+
     setIsDeletingAllInProgress(true);
     setShowUndoToast(true);
-    
+
     undoTimeoutRef.current = setTimeout(async () => {
       await handleDeleteAllNotifications();
       setIsDeletingAllInProgress(false);
@@ -833,6 +826,26 @@ function App() {
     setIsDeletingAllInProgress(false);
     setShowUndoToast(false);
   };
+
+  // Cleanup centralizzato per undoTimeoutRef e animation frames
+  useEffect(() => {
+    return () => {
+      if (undoTimeoutRef.current) {
+        clearTimeout(undoTimeoutRef.current);
+        undoTimeoutRef.current = null;
+      }
+      if (pagerTransitionFrameRef.current !== null) {
+        window.cancelAnimationFrame(pagerTransitionFrameRef.current);
+      }
+      if (pagerDragFrameRef.current !== null) {
+        window.cancelAnimationFrame(pagerDragFrameRef.current);
+      }
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -924,9 +937,41 @@ function App() {
     }
   };
 
-  const filteredSuggestions = suggestions.filter(item =>
-    item.text.toLowerCase().includes(newItemText.toLowerCase()) && newItemText.length > 0
+  const filteredSuggestions = useMemo(() => 
+    suggestions.filter(item =>
+      item.text.toLowerCase().includes(newItemText.toLowerCase()) && newItemText.length > 0
+    ),
+    [suggestions, newItemText]
   );
+
+  // Memoizza le query constraints per evitare ricreazioni
+  const shoppingListQuery = useMemo(() => 
+    [limit(100)] as const,
+  []);
+  
+  const notificationsQuery = useMemo(() =>
+    [orderBy('timestamp', 'desc'), limit(50)] as const,
+  []);
+  
+  const recipesQuery = useMemo(() => 
+    [limit(100)] as const,
+  []);
+  
+  const eventsQuery = useMemo(() => 
+    [limit(100)] as const,
+  []);
+  
+  const expensesQuery = useMemo(() => 
+    [orderBy('timestamp', 'desc'), limit(500)] as const,
+  []);
+
+  const cleaningLogsQuery = useMemo(() => 
+    [orderBy('timestamp', 'desc'), limit(300)] as const,
+  []);
+  
+  const roomTasksQuery = useMemo(() => 
+    [limit(200)] as const,
+  []);
 
   // Authentication Listener
   useEffect(() => {
@@ -953,6 +998,25 @@ function App() {
       clearTimeout(timeout);
     };
   }, [isAuthLoading]);
+
+  // Safari/iOS Optimizations: Start auto-cleanup on mount
+  useEffect(() => {
+    // Log platform info
+    console.log(
+      `[Safari Opt] Platform: ${isIOS() ? 'iOS' : isSafari() ? 'Safari' : 'Other'} ` +
+      `(User Agent: ${typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 50) + '...' : 'SSR'})`
+    );
+
+    // Start automatic cleanup cycle
+    const stopAutoCleanup = startAutoCleanup();
+
+    // Initial cleanup check
+    performProactiveCleanup();
+
+    return () => {
+      stopAutoCleanup();
+    };
+  }, []);
 
   // Failsafe for data loading skeletons
   useEffect(() => {
@@ -1004,78 +1068,175 @@ function App() {
     migrationAndCleanup();
   }, [activeProfile.id, colPath, user]);
 
-  // Real-time Firestore Listeners (Global/Static Collections)
+  // Hook con cache IndexedDB per collezioni principali
+  // NOTA: Cache in sola lettura (scritture disabilitate per memory leak)
+  
+  // Shopping List con cache
+  const shoppingListResult = useFirestoreListWithCache<ShoppingItem>({
+    db,
+    collectionPath: colPath('shoppingList'),
+    collectionName: 'shoppingList',
+    profileId: activeProfile.id,
+    constraints: shoppingListQuery,
+    enabled: !!user && activeProfile.id !== 'guest'
+    // onDataChange rimosso - causa troppi setSessionReads
+  });
+
+  // Recipes con cache
+  const recipesResult = useFirestoreListWithCache<Recipe>({
+    db,
+    collectionPath: colPath('recipes'),
+    collectionName: 'recipes',
+    profileId: activeProfile.id,
+    constraints: recipesQuery,
+    enabled: !!user && activeProfile.id !== 'guest'
+  });
+
+  // Tags con cache
+  const tagsResult = useFirestoreListWithCache<Tag>({
+    db,
+    collectionPath: colPath('tags'),
+    collectionName: 'tags',
+    profileId: activeProfile.id,
+    enabled: !!user && activeProfile.id !== 'guest'
+  });
+
+  // Events con cache
+  const eventsResult = useFirestoreListWithCache<CalendarEvent>({
+    db,
+    collectionPath: colPath('events'),
+    collectionName: 'events',
+    profileId: activeProfile.id,
+    constraints: eventsQuery,
+    enabled: !!user && activeProfile.id !== 'guest'
+  });
+
+  // Expenses con cache
+  const expensesResult = useFirestoreListWithCache<Expense>({
+    db,
+    collectionPath: colPath('expenses'),
+    collectionName: 'expenses',
+    profileId: activeProfile.id,
+    constraints: expensesQuery,
+    enabled: !!user && activeProfile.id !== 'guest'
+  });
+
+  // Notifications con cache
+  const notificationsResult = useNotificationsWithCache<NotificationItem>({
+    db,
+    collectionPath: colPath('notifications'),
+    profileId: activeProfile.id,
+    constraints: notificationsQuery,
+    enabled: !!user && activeProfile.id !== 'guest'
+  });
+
+  // MealPlans con cache (mese corrente)
+  const yearMonth = format(currentMonth, 'yyyy-MM');
+  const mealPlansStart = format(subMonths(startOfMonth(currentMonth), 1), 'yyyy-MM-dd');
+  const mealPlansEnd = format(addMonths(endOfMonth(currentMonth), 1), 'yyyy-MM-dd');
+  
+  const mealPlansResult = useMealPlansWithCache({
+    db,
+    collectionPath: colPath('mealPlans'),
+    profileId: activeProfile.id,
+    yearMonth,
+    startDate: mealPlansStart,
+    endDate: mealPlansEnd,
+    enabled: !!user && activeProfile.id !== 'guest'
+    // onDataChange rimosso - causa troppi setSessionReads
+  });
+
+  // Listener Firestore tradizionali solo per profile photo
   useEffect(() => {
-    if (activeProfile.id === 'guest') return;
-    console.log("[FIREBASE] Sottoscrizione listeners globali per:", activeProfile.id);
+    if (activeProfile.id === 'guest' || !user) return;
 
-    const unsubscribeShopping = onSnapshot(query(collection(db, colPath('shoppingList')), limit(100)), (snapshot) => {
-      setSessionReads(prev => prev + snapshot.docs.length);
-      setShoppingList(snapshot.docs.map(d => d.data() as ShoppingItem));
-    });
-
-    const unsubscribeNotifications = onSnapshot(query(collection(db, colPath('notifications')), limit(20)), (snapshot) => {
-      setSessionReads(prev => prev + snapshot.docs.length);
-      const list = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() } as NotificationItem))
-        .sort((a, b) => b.timestamp - a.timestamp);
-      setNotifications(list);
-    });
-
-    const unsubscribeProfilePhoto = onSnapshot(doc(db, colPath('metadata'), 'profile'), (docSnap) => {
-      setSessionReads(prev => prev + (docSnap.exists() ? 1 : 0));
-      setProfileAvatar(docSnap.exists() && docSnap.data().avatarBase64 ? docSnap.data().avatarBase64 : null);
-    });
-
-    const unsubscribeRecipes = onSnapshot(query(collection(db, colPath('recipes')), limit(100)), (snapshot) => {
-      setSessionReads(prev => prev + snapshot.docs.length);
-      setRecipes(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Recipe)));
-    });
-
-    const unsubscribeTags = onSnapshot(collection(db, colPath('tags')), (snapshot) => {
-      setSessionReads(prev => prev + snapshot.docs.length);
-      setTags(snapshot.docs.map(d => d.data() as Tag));
-    });
-
-    const unsubscribeEvents = onSnapshot(query(collection(db, colPath('events')), limit(100)), (snapshot) => {
-      setSessionReads(prev => prev + snapshot.docs.length);
-      setEvents(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
-    });
-
-    const unsubscribeExpenses = onSnapshot(query(collection(db, colPath('expenses')), orderBy('timestamp', 'desc'), limit(500)), (snapshot) => {
-      setSessionReads(prev => prev + snapshot.docs.length);
-      setExpenses(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Expense)));
-    });
+    const unsubscribeProfilePhoto = onSnapshot(
+      doc(db, colPath('metadata'), 'profile'),
+      (docSnap) => {
+        setSessionReads(prev => prev + (docSnap.exists() ? 1 : 0));
+        setProfileAvatar(docSnap.exists() && docSnap.data().avatarBase64 ? docSnap.data().avatarBase64 : null);
+      }
+    );
 
     return () => {
       console.log("[FIREBASE] Pulizia listeners globali per:", activeProfile.id);
-      unsubscribeShopping();
-      unsubscribeNotifications();
-      unsubscribeRecipes();
       unsubscribeProfilePhoto();
-      unsubscribeTags();
-      unsubscribeEvents();
-      unsubscribeExpenses();
     };
   }, [activeProfile.id, colPath, user]);
 
-  // Sync meal plans for the viewed window (Current Month +/- 1)
+  // Sync dati dagli hook cached agli stati locali
   useEffect(() => {
-    if (!user) return;
-    const start = format(subMonths(startOfMonth(currentMonth), 1), 'yyyy-MM-dd');
-    const end = format(addMonths(endOfMonth(currentMonth), 1), 'yyyy-MM-dd');
+    if (shoppingListResult.data) {
+      setShoppingList(prev => {
+        if (prev.length === shoppingListResult.data.length &&
+            prev.every((item, i) => item.id === shoppingListResult.data[i].id)) {
+          return prev;
+        }
+        return shoppingListResult.data;
+      });
+    }
+  }, [shoppingListResult.data]);
 
-    const unsubscribeMeals = onSnapshot(
-      query(collection(db, colPath('mealPlans')), orderBy(documentId()), where(documentId(), '>=', start), where(documentId(), '<=', end)),
-      (snapshot) => {
-        setSessionReads(prev => prev + snapshot.docs.length);
-        const newPlan: MealPlan = {};
-        snapshot.forEach(d => { newPlan[d.id] = d.data() as { [mealId: string]: MealEntry[] }; });
-        setMealPlan(newPlan);
-      }
-    );
-    return () => unsubscribeMeals();
-  }, [activeProfile.id, colPath, currentMonth, user]);
+  useEffect(() => {
+    if (recipesResult.data) {
+      setRecipes(recipesResult.data);
+    }
+  }, [recipesResult.data]);
+
+  useEffect(() => {
+    if (tagsResult.data) {
+      setTags(tagsResult.data);
+    }
+  }, [tagsResult.data]);
+
+  useEffect(() => {
+    if (eventsResult.data) {
+      setEvents(eventsResult.data);
+    }
+  }, [eventsResult.data]);
+
+  useEffect(() => {
+    if (expensesResult.data) {
+      setExpenses(expensesResult.data);
+    }
+  }, [expensesResult.data]);
+
+  useEffect(() => {
+    if (notificationsResult.data) {
+      setNotifications(prev => {
+        // Comparazione più profonda: controlla anche il campo 'read'
+        if (prev.length === notificationsResult.data.length &&
+            prev.every((item, i) =>
+              item.id === notificationsResult.data[i].id &&
+              item.read === notificationsResult.data[i].read
+            )) {
+          return prev;
+        }
+        return notificationsResult.data;
+      });
+    }
+  }, [notificationsResult.data]);
+
+  useEffect(() => {
+    if (mealPlansResult.data && Object.keys(mealPlansResult.data).length > 0) {
+      setMealPlan(prev => {
+        // Usa worker solo per oggetti grandi (>100 chiavi)
+        const isLarge = Object.keys(mealPlansResult.data).length > 100;
+        
+        if (workerReady && isLarge) {
+          // Per worker: confronta comunque sincrono ma logga per debug
+          // In futuro si potrà fare async completo
+          const isEqual = mealPlanEqual(prev, mealPlansResult.data);
+          console.log('[Worker] mealPlanEqual check (large object)');
+          if (isEqual) return prev;
+        } else {
+          // Fallback sincrono per oggetti piccoli
+          if (mealPlanEqual(prev, mealPlansResult.data)) return prev;
+        }
+        return mealPlansResult.data;
+      });
+    }
+  }, [mealPlansResult.data, workerReady]);
 
   // Sync notes for the selected week
   useEffect(() => {
@@ -1085,9 +1246,10 @@ function App() {
       (docSnap) => {
         setSessionReads(prev => prev + (docSnap.exists() ? 1 : 0));
         if (docSnap.exists()) {
-          setWeekNotes(docSnap.data().content || '');
+          const content = docSnap.data().content || '';
+          setWeekNotes(prev => prev === content ? prev : content);
         } else {
-          setWeekNotes('');
+          setWeekNotes(prev => prev === '' ? prev : '');
         }
       },
       (error) => {
@@ -1106,9 +1268,10 @@ function App() {
       (docSnap) => {
         setSessionReads(prev => prev + (docSnap.exists() ? 1 : 0));
         if (docSnap.exists()) {
-          setCleaningNotes(docSnap.data().content || '');
+          const content = docSnap.data().content || '';
+          setCleaningNotes(prev => prev === content ? prev : content);
         } else {
-          setCleaningNotes('');
+          setCleaningNotes(prev => prev === '' ? prev : '');
         }
       },
       (error) => {
@@ -1121,53 +1284,79 @@ function App() {
 
   // Sync task settings
   useEffect(() => {
-    const unsubscribeSettings = onSnapshot(collection(db, colPath('taskSettings')), (snapshot) => {
-      setSessionReads(prev => prev + snapshot.docs.length);
-      const settings: TaskSettings = {};
-      snapshot.docs.forEach(d => {
-        const data = d.data();
-        if (typeof data.weeks === 'number') {
-          settings[d.id] = { value: data.weeks, unit: 'settimane' };
-        } else {
-          settings[d.id] = { value: data.value, unit: data.unit as TaskUnit };
-        }
-      });
-      setTaskSettings(settings);
-    });
+    const unsubscribeSettings = onSnapshot(
+      collection(db, colPath('taskSettings')), 
+      (snapshot) => {
+        setSessionReads(prev => prev + snapshot.docs.length);
+        const settings: TaskSettings = {};
+        snapshot.docs.forEach(d => {
+          const data = d.data();
+          if (typeof data.weeks === 'number') {
+            settings[d.id] = { value: data.weeks, unit: 'settimane' };
+          } else {
+            settings[d.id] = { value: data.value, unit: data.unit as TaskUnit };
+          }
+        });
+        setTaskSettings(prev => {
+          // Usa worker solo per oggetti grandi
+          const isLarge = Object.keys(settings || {}).length > 50;
+          
+          if (workerReady && isLarge) {
+            console.log('[Worker] deepEqual check (large object)');
+            // In futuro: await workerDeepEqual(prev, settings)
+          }
+          
+          if (deepEqual(prev, settings)) return prev;
+          return settings;
+        });
+      }
+    );
     return () => unsubscribeSettings();
   }, [activeProfile.id, colPath]);
 
   // Sync cleaning logs
   useEffect(() => {
     const unsubscribeLogs = onSnapshot(
-      query(collection(db, colPath('cleaningLogs')), orderBy('timestamp', 'desc'), limit(300)),
+      query(collection(db, colPath('cleaningLogs')), ...cleaningLogsQuery),
       (snapshot) => {
         setSessionReads(prev => prev + snapshot.docs.length);
         const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CleaningLog));
-        setCleaningLogs(list);
+        setCleaningLogs(prev => {
+          if (prev.length === list.length && 
+              prev.every((item, i) => item.id === list[i].id)) {
+            return prev;
+          }
+          return list;
+        });
       },
       (error) => {
         console.error("[FIREBASE CLEANING LOGS ERROR]:", error);
       }
     );
     return () => unsubscribeLogs();
-  }, [activeProfile.id, colPath]);
+  }, [activeProfile.id, colPath, cleaningLogsQuery]);
 
   // Sync room tasks — pure listener, no side-effects
   useEffect(() => {
     const unsubscribeRoomTasks = onSnapshot(
-      query(collection(db, colPath('roomTasks')), limit(200)),
+      query(collection(db, colPath('roomTasks')), ...roomTasksQuery),
       (snapshot) => {
         setSessionReads(prev => prev + snapshot.docs.length);
         const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as RoomTask));
-        setRoomTasks(list);
+        setRoomTasks(prev => {
+          if (prev.length === list.length && 
+              prev.every((task, i) => task.id === list[i].id)) {
+            return prev;
+          }
+          return list;
+        });
       },
       (error) => {
         console.error('[FIREBASE ROOM TASKS ERROR]:', error);
       }
     );
     return () => unsubscribeRoomTasks();
-  }, [activeProfile.id, colPath]); // Added colPath for stability
+  }, [activeProfile.id, colPath, roomTasksQuery]);
 
   // One-shot seeding — uses getDocs so it never reacts to its own writes
   useEffect(() => {
@@ -1297,11 +1486,11 @@ function App() {
   };
 
   const handleAddMealEntry = async (dateKey: string, mealId: string, text: string, assignees: string[]) => {
-    const newEntry: MealEntry = { 
-      id: generateId(), 
-      text, 
+    const newEntry: MealEntry = {
+      id: generateId(),
+      text,
       assignee: assignees[0] || '', // Fallback for deep-legacy usages
-      assignees 
+      assignees
     };
     const dayData = mealPlan[dateKey] || {};
 
@@ -1396,20 +1585,27 @@ function App() {
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
 
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(monthStart);
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  // Memoizza calcoli date per evitare ricalcoli ad ogni render
+  const monthStart = useMemo(() => startOfMonth(currentMonth), [currentMonth]);
+  const monthEnd = useMemo(() => endOfMonth(monthStart), [monthStart]);
+  const calendarStart = useMemo(() => startOfWeek(monthStart, { weekStartsOn: 1 }), [monthStart]);
+  const calendarEnd = useMemo(() => endOfWeek(monthEnd, { weekStartsOn: 1 }), [monthEnd]);
 
-  const calendarDays: Date[] = [];
-  let dayIterator = calendarStart;
-  while (dayIterator <= calendarEnd) {
-    calendarDays.push(dayIterator);
-    dayIterator = addDays(dayIterator, 1);
-  }
+  const calendarDays: Date[] = useMemo(() => {
+    const days: Date[] = [];
+    let dayIterator = calendarStart;
+    while (dayIterator <= calendarEnd) {
+      days.push(dayIterator);
+      dayIterator = addDays(dayIterator, 1);
+    }
+    return days;
+  }, [calendarStart, calendarEnd]);
 
-  const selectedWeekEnd = endOfWeek(selectedWeekStart, { weekStartsOn: 1 });
-  const activeWeekDays = Array.from({ length: 7 }).map((_, i: number) => addDays(selectedWeekStart, i));
+  const selectedWeekEnd = useMemo(() => endOfWeek(selectedWeekStart, { weekStartsOn: 1 }), [selectedWeekStart]);
+  const activeWeekDays = useMemo(() => 
+    Array.from({ length: 7 }).map((_, i: number) => addDays(selectedWeekStart, i)),
+    [selectedWeekStart]
+  );
 
   const handleUpdateTaskFrequency = async (taskType: string, value: number, unit: TaskUnit) => {
     try {
@@ -2217,10 +2413,15 @@ function App() {
                     <UserIcon size={18} className="profile-option-icon" />
                     <span className="profile-name">Gestione Account</span>
                   </button>
-                  <button 
+                  <button
                     className="profile-option"
-                    onClick={() => {
-                      signOut(auth);
+                    onClick={async () => {
+                      // Cleanup cache before logout (Safari optimization)
+                      if (user) {
+                        console.log('[Safari Opt] Clearing cache on logout');
+                        await clearProfileCache(user.uid);
+                      }
+                      await signOut(auth);
                       setShowProfileDropdown(false);
                     }}
                   >

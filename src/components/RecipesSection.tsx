@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { BookOpen, Plus, Trash2, X, Pencil, ShoppingCart, Check, Settings, MoreVertical, List, Eye } from 'lucide-react';
 import type { Recipe, Tag } from '../types';
@@ -6,6 +6,7 @@ import { InfoTooltip } from './InfoTooltip';
 import { TagManagerModal } from './TagManagerModal';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { useInViewport } from '../hooks/useInViewport';
+import { LazyImage } from './LazyImage';
 import cookbookImg from '../assets/cookbook-3d-cutout.png';
 import './RecipesSection.css';
 
@@ -29,8 +30,15 @@ interface RecipesSectionProps {
   isActive?: boolean;
 }
 
-
-export function RecipesSection({
+/**
+ * Componente ottimizzato per il ricettario
+ * 
+ * Ottimizzazioni:
+ * - React.memo con custom comparison
+ * - useCallback per handler
+ * - useMemo per filtri e trasformazioni
+ */
+export const RecipesSection = React.memo<RecipesSectionProps>(function RecipesSection({
   isMobile,
   recipes,
   handleRecipeClick,
@@ -62,22 +70,23 @@ export function RecipesSection({
     setShowRecipesSheet(false);
     setShowMoreMenu(false);
   }, 100, showRecipesSheet);
-  // Swipe logic
-  const handleTouchStart = (e: React.TouchEvent, id: string) => {
+
+  // Swipe logic - memoizzata per evitare ricreazioni
+  const handleTouchStart = useCallback((e: React.TouchEvent, id: string) => {
     setTouchStartX(e.touches[0].clientX);
     setSwipingId(id);
-  };
+  }, []);
 
-  const handleTouchMove = (e: React.TouchEvent) => {
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (touchStartX === null || swipingId === null) return;
     const deltaX = e.touches[0].clientX - touchStartX;
     // Only allow swiping to the right (deltaX > 0)
     if (deltaX > 0) {
       setSwipeOffsets(prev => ({ ...prev, [swipingId]: Math.min(deltaX, 120) }));
     }
-  };
+  }, [touchStartX, swipingId]);
 
-  const handleTouchEnd = (id: string) => {
+  const handleTouchEnd = useCallback((id: string) => {
     const offset = swipeOffsets[id] || 0;
     if (offset > 80) {
       setShowDeleteConfirm(id);
@@ -85,14 +94,14 @@ export function RecipesSection({
     setSwipeOffsets(prev => ({ ...prev, [id]: 0 }));
     setTouchStartX(null);
     setSwipingId(null);
-  };
+  }, [swipeOffsets]);
 
-  const getTagByLabel = (label?: string) => {
+  const getTagByLabel = useCallback((label?: string) => {
     if (!label) return null;
     return tags.find(t => t.label === label);
-  };
+  }, [tags]);
 
-  const getTagBadgeStyle = (label?: string) => {
+  const getTagBadgeStyle = useMemo(() => (label?: string) => {
     const tag = getTagByLabel(label);
     const color = tag?.color || '#cbd5e1';
     return {
@@ -100,7 +109,7 @@ export function RecipesSection({
       borderColor: `${color}66`,
       color: 'var(--text-main)'
     } as React.CSSProperties;
-  };
+  }, [getTagByLabel]);
 
   return (
     <>
@@ -144,7 +153,14 @@ export function RecipesSection({
             {recipes.map(recipe => (
               <div key={recipe.id} className="recipe-card" onClick={() => handleRecipeClick(recipe)}>
                 <div className="recipe-image-wrapper">
-                  <img src={recipe.image} alt={recipe.title} className="recipe-image" loading="lazy" decoding="async" />
+                  <LazyImage
+                    src={recipe.image}
+                    alt={recipe.title}
+                    className="recipe-image"
+                    width={400}
+                    height={300}
+                    placeholderColor="#f1f5f9"
+                  />
                   {!isMobile && (
                     <div className="recipe-overlay">
                       <Plus size={24} color="white" />
@@ -492,4 +508,14 @@ export function RecipesSection({
       )}
     </>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison per React.memo
+  return (
+    prevProps.isMobile === nextProps.isMobile &&
+    prevProps.recipes.length === nextProps.recipes.length &&
+    prevProps.selectedRecipe?.id === nextProps.selectedRecipe?.id &&
+    prevProps.isEditingRecipe === nextProps.isEditingRecipe &&
+    prevProps.tags.length === nextProps.tags.length &&
+    prevProps.isActive === nextProps.isActive
+  );
+});

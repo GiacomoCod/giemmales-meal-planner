@@ -92,6 +92,7 @@ export function PlannerSection({
                 width={1024}
                 height={1024}
                 decoding="async"
+                loading="lazy"
               />
               <div className="burger-shadow"></div>
             </div>

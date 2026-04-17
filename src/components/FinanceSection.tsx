@@ -91,8 +91,10 @@ function PieChart2D({ data }: { data: { label: string; value: number; color: str
           <div key={i} className="f-legend-row">
             <div className="f-legend-dot" style={{ backgroundColor: d.color }} />
             <span className="f-legend-label">{d.label}</span>
-            <span className="f-legend-value">{formatEur(d.value)}</span>
-            <span className="f-legend-pct">({((d.value / total) * 100).toFixed(0)}%)</span>
+            <div className="f-legend-values">
+              <span className="f-legend-value">{formatEur(d.value)}</span>
+              <span className="f-legend-pct">({((d.value / total) * 100).toFixed(0)}%)</span>
+            </div>
           </div>
         ))}
       </div>
@@ -105,6 +107,7 @@ function PieChart2D({ data }: { data: { label: string; value: number; color: str
    ============================================================ */
 function BarChart({ bars }: { bars: { label: string; amount: number }[] }) {
   const max = Math.max(...bars.map(b => b.amount), 1);
+
   return (
     <div className="f-bar-chart">
       {bars.map((b, i) => {
@@ -116,7 +119,7 @@ function BarChart({ bars }: { bars: { label: string; amount: number }[] }) {
             )}
             <div
               className="f-bar"
-              style={{ height: `${Math.max(pct, 2)}%` }}
+              style={{ height: `${Math.max(pct, 4)}%` }}
               title={`${b.label}: ${formatEur(b.amount)}`}
             />
             <span className="f-bar-label">{b.label}</span>
@@ -194,20 +197,22 @@ export function FinanceSection({
     [expenses, monthEnd, monthStart]
   );
 
-  const spendingExpenses = useMemo(() => 
+  const spendingExpenses = useMemo(() =>
     monthExpenses.filter(e => e.category !== 'repayment'),
     [monthExpenses]
   );
 
+  // Totale spese REALI della casa (esclude i rimborsi che sono solo trasferimenti)
   const monthTotal = spendingExpenses.reduce((s, e) => s + e.amount, 0);
 
+  // Totali per persona - SOLO spese reali (no rimborsi)
   const personTotals = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const e of monthExpenses) {
+    for (const e of spendingExpenses) { // Usa spendingExpenses invece di monthExpenses
       map[e.paidBy] = (map[e.paidBy] ?? 0) + e.amount;
     }
     return map;
-  }, [monthExpenses]);
+  }, [spendingExpenses]);
 
   const balanceSummary = useMemo(() => {
     const persons = tags;
@@ -375,6 +380,7 @@ export function FinanceSection({
                 width={1024}
                 height={1024}
                 decoding="async"
+                loading="lazy"
               />
               <div className="piggy-shadow"></div>
             </div>

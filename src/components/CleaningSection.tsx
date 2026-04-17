@@ -1,4 +1,4 @@
-import React, { useState, useEffect, type CSSProperties } from 'react';
+import React, { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Sparkles, ChevronRight as ChevronRightIcon, Plus, Check, X, Calendar as CalendarIcon, RefreshCw, Trash2, Minus, MoreVertical, List, Settings, Users, Pencil, History } from 'lucide-react';
 import { startOfWeek, startOfMonth, format, isSameMonth, parseISO } from 'date-fns';
@@ -89,34 +89,55 @@ export function CleaningSection({
     return () => window.clearTimeout(timeoutId);
   }, [selectedRoom, roomTasks, cleaningLogs, taskSettings]);
 
-  const getTaskUrgency = (logDate: string, taskType: string, now: number) => {
-    if (!logDate) return { progress: 0, color: '#48bb78', daysRemaining: null };
-    const dateObj = parseISO(logDate);
-    if (isNaN(dateObj.getTime())) return { progress: 0, color: '#48bb78', daysRemaining: null };
+  // Memoizza calcoli di urgenza per evitare ricalcoli ad ogni render
+  const taskUrgencies = useMemo(() => {
+    const map = new Map<string, { progress: number; color: string; daysRemaining: number | null }>();
+    
+    roomTasks.forEach(task => {
+      const logs = cleaningLogs.filter(l => 
+        l.roomId === task.roomId && l.taskType === task.taskName
+      );
+      const latestLog = logs[0];
+      const logDate = latestLog?.date || '';
+      
+      // Calcolo urgenza inline per memoizzazione
+      if (!logDate) {
+        map.set(task.id, { progress: 0, color: '#48bb78', daysRemaining: null });
+        return;
+      }
+      
+      const dateObj = parseISO(logDate);
+      if (isNaN(dateObj.getTime())) {
+        map.set(task.id, { progress: 0, color: '#48bb78', daysRemaining: null });
+        return;
+      }
+      
+      const setting = taskSettings[task.taskName] || { value: 1, unit: 'settimane' };
+      let totalDays = setting.value;
+      if (setting.unit === 'settimane') totalDays = setting.value * 7;
+      else if (setting.unit === 'mesi') totalDays = setting.value * 30;
+      else if (setting.unit === 'anni') totalDays = setting.value * 365;
+      
+      const daysPassed = Math.max(0, Math.floor((nowTs - dateObj.getTime()) / (1000 * 60 * 60 * 24)));
+      const progress = Math.min(100, (daysPassed / totalDays) * 100);
+      const daysRemaining = Math.max(0, totalDays - daysPassed);
+      const hue = Math.round(120 - (progress / 100) * 120);
+      const color = `hsl(${hue}, 80%, 48%)`;
+      
+      map.set(task.id, { progress, color, daysRemaining });
+    });
+    
+    return map;
+  }, [roomTasks, cleaningLogs, taskSettings, nowTs]);
 
-    const setting = taskSettings[taskType] || { value: 1, unit: 'settimane' };
-    let totalDays = setting.value;
-    if (setting.unit === 'settimane') totalDays = setting.value * 7;
-    else if (setting.unit === 'mesi') totalDays = setting.value * 30;
-    else if (setting.unit === 'anni') totalDays = setting.value * 365;
-
-    const daysPassed = Math.max(0, Math.floor((now - dateObj.getTime()) / (1000 * 60 * 60 * 24)));
-    const progress = Math.min(100, (daysPassed / totalDays) * 100);
-    const daysRemaining = Math.max(0, totalDays - daysPassed);
-
-    const hue = Math.round(120 - (progress / 100) * 120);
-    const color = `hsl(${hue}, 80%, 48%)`;
-
-
-    return { progress, color, daysRemaining };
-  };
-
-  const sortLogs = (logs: CleaningLog[]) =>
-    logs.sort((a, b) => {
+  // Memoizza funzione di sort per evitare ricreazioni
+  const sortLogs = useMemo(() => 
+    (logs: CleaningLog[]) => logs.sort((a, b) => {
       const dateOrder = b.date.localeCompare(a.date);
       if (dateOrder !== 0) return dateOrder;
       return b.timestamp - a.timestamp;
-    });
+    }),
+  []);
 
   const getLogPerformer = (log: CleaningLog) => {
     const tagById = log.performedByTagId ? tags.find(t => t.id === log.performedByTagId) : null;
@@ -245,6 +266,7 @@ export function CleaningSection({
                     width={1024}
                     height={1024}
                     decoding="async"
+                    loading="lazy"
                   />
                   <div className="kit-shadow"></div>
                 </div>
@@ -339,7 +361,8 @@ export function CleaningSection({
                       );
                       const latestLog = taskLogs[0] || null;
                       const latestPerformer = latestLog ? getLogPerformer(latestLog) : null;
-                      const { progress, color, daysRemaining } = getTaskUrgency(latestLog?.date || '', task.taskName, nowTs);
+                      const urgency = taskUrgencies.get(task.id) || { progress: 0, color: '#48bb78', daysRemaining: null };
+                      const { progress, color, daysRemaining } = urgency;
                       const isOverdue = progress >= 100;
 
                       return (
@@ -721,7 +744,8 @@ export function CleaningSection({
                         cleaningLogs.filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
                       )[0];
                       if (!latestLog) return false;
-                      const { progress } = getTaskUrgency(latestLog?.date || '', task.taskName, Date.now());
+                      const urgency = taskUrgencies.get(task.id) || { progress: 0, color: '#48bb78', daysRemaining: null };
+                      const { progress } = urgency;
                       return progress > 0;
                     });
 
@@ -737,10 +761,8 @@ export function CleaningSection({
 
                     return activeTasks.map(task => {
                       const room = ROOMS.find(r => r.id === task.roomId);
-                      const latestLog = sortLogs(
-                        cleaningLogs.filter(l => l.roomId === task.roomId && l.taskType === task.taskName)
-                      )[0];
-                      const { color, progress } = getTaskUrgency(latestLog?.date || '', task.taskName, Date.now());
+                      const urgency = taskUrgencies.get(task.id) || { progress: 0, color: '#48bb78', daysRemaining: null };
+                      const { color, progress } = urgency;
 
                       return (
                         <div key={task.id} className="management-list-item" onClick={() => { setSelectedRoom(task.roomId); setShowTasksSheet(false); }}>

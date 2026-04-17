@@ -1,11 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Check, Trash2, X, Store, Home, Search, Sparkles, ShoppingBag, Pill, MoreVertical } from 'lucide-react';
 import type { ShoppingItem } from '../types';
 import shoppingCartImg from '../assets/shopping-cart-3d-cutout.png';
 import { useSwipeToDismiss } from '../hooks/useSwipeToDismiss';
 import { useInViewport } from '../hooks/useInViewport';
+import { VirtualList } from './VirtualList';
+import { useVirtualization } from '../hooks/useVirtualization';
 import './ShoppingListSection.css';
+
+// Altezza fissa di ogni item della lista (px)
+const SHOPPING_ITEM_HEIGHT = 56;
+// Soglia per abilitare virtualizzazione
+const VIRTUALIZATION_THRESHOLD = 50;
 
 interface ShoppingListSectionProps {
   isMobile: boolean;
@@ -25,7 +32,16 @@ interface ShoppingListSectionProps {
   isActive?: boolean;
 }
 
-export function ShoppingListSection({
+/**
+ * Componente ottimizzato per la lista della spesa
+ * 
+ * Ottimizzazioni:
+ * - React.memo per prevenire re-render non necessari
+ * - useMemo per filtri categoria
+ * - useCallback per handler
+ * - Virtualizzazione per liste lunghe
+ */
+export const ShoppingListSection = React.memo<ShoppingListSectionProps>(function ShoppingListSection({
   isMobile,
   shoppingList,
   newItemText,
@@ -82,6 +98,11 @@ export function ShoppingListSection({
     [shoppingList]
   );
 
+  // Determina se abilitare virtualizzazione per ciascuna lista
+  const shouldVirtualizeSupermarket = useVirtualization(supermarketItems, VIRTUALIZATION_THRESHOLD);
+  const shouldVirtualizeHome = useVirtualization(homeItems, VIRTUALIZATION_THRESHOLD);
+  const shouldVirtualizeMedicine = useVirtualization(medicineItems, VIRTUALIZATION_THRESHOLD);
+
   const onSubmit = (e: React.FormEvent) => {
     handleAddItem(e, formCategory);
   };
@@ -94,7 +115,8 @@ export function ShoppingListSection({
     }
   };
 
-  const renderItem = (item: ShoppingItem) => (
+  // Memoizza renderItem per evitare ricreazioni che invalidano la virtualizzazione
+  const renderItem = useCallback((item: ShoppingItem) => (
     <li
       key={item.id}
       className={`s-item ${item.checked ? 'done' : ''}`}
@@ -131,7 +153,7 @@ export function ShoppingListSection({
         )}
       </div>
     </li>
-  );
+  ), [toggleItem, deleteItem, showDeleteConfirm, isMobile]);
 
   return (
     <main className={`main-content shopping-only ${isMobile ? 'is-mobile' : ''}`}>
@@ -154,6 +176,7 @@ export function ShoppingListSection({
                 width={1024}
                 height={1024}
                 decoding="async"
+                loading="lazy"
               />
               <div className="cart-shadow"></div>
             </div>
@@ -282,6 +305,33 @@ export function ShoppingListSection({
                          <ul className="s-items-list">
                             {cat.items.length === 0 ? (
                               <div className="s-empty-small">La lista è vuota</div>
+                            ) : shouldVirtualizeSupermarket && cat.id === 'supermarket' ? (
+                              <VirtualList
+                                items={cat.items}
+                                itemHeight={SHOPPING_ITEM_HEIGHT}
+                                containerHeight={300}
+                                overscan={5}
+                                keyExtractor={(item) => item.id}
+                                renderItem={(item) => renderItem(item)}
+                              />
+                            ) : shouldVirtualizeHome && cat.id === 'home' ? (
+                              <VirtualList
+                                items={cat.items}
+                                itemHeight={SHOPPING_ITEM_HEIGHT}
+                                containerHeight={300}
+                                overscan={5}
+                                keyExtractor={(item) => item.id}
+                                renderItem={(item) => renderItem(item)}
+                              />
+                            ) : shouldVirtualizeMedicine && cat.id === 'medicine' ? (
+                              <VirtualList
+                                items={cat.items}
+                                itemHeight={SHOPPING_ITEM_HEIGHT}
+                                containerHeight={300}
+                                overscan={5}
+                                keyExtractor={(item) => item.id}
+                                renderItem={(item) => renderItem(item)}
+                              />
                             ) : (
                               cat.items.map(renderItem)
                             )}
@@ -303,7 +353,20 @@ export function ShoppingListSection({
                   </div>
                 </div>
                 <ul className="s-items-list">
-                  {supermarketItems.length === 0 ? <div className="s-empty"><ShoppingBag size={36} /><p>Vuota</p></div> : supermarketItems.map(renderItem)}
+                  {supermarketItems.length === 0 ? (
+                    <div className="s-empty"><ShoppingBag size={36} /><p>Vuota</p></div>
+                  ) : shouldVirtualizeSupermarket ? (
+                    <VirtualList
+                      items={supermarketItems}
+                      itemHeight={SHOPPING_ITEM_HEIGHT}
+                      containerHeight={400}
+                      overscan={5}
+                      keyExtractor={(item) => item.id}
+                      renderItem={(item) => renderItem(item)}
+                    />
+                  ) : (
+                    supermarketItems.map(renderItem)
+                  )}
                 </ul>
               </div>
 
@@ -315,7 +378,20 @@ export function ShoppingListSection({
                   </div>
                 </div>
                 <ul className="s-items-list">
-                  {homeItems.length === 0 ? <div className="s-empty"><Sparkles size={36} /><p>Vuota</p></div> : homeItems.map(renderItem)}
+                  {homeItems.length === 0 ? (
+                    <div className="s-empty"><Sparkles size={36} /><p>Vuota</p></div>
+                  ) : shouldVirtualizeHome ? (
+                    <VirtualList
+                      items={homeItems}
+                      itemHeight={SHOPPING_ITEM_HEIGHT}
+                      containerHeight={400}
+                      overscan={5}
+                      keyExtractor={(item) => item.id}
+                      renderItem={(item) => renderItem(item)}
+                    />
+                  ) : (
+                    homeItems.map(renderItem)
+                  )}
                 </ul>
               </div>
 
@@ -327,7 +403,20 @@ export function ShoppingListSection({
                   </div>
                 </div>
                 <ul className="s-items-list">
-                  {medicineItems.length === 0 ? <div className="s-empty"><Pill size={36} /><p>Vuota</p></div> : medicineItems.map(renderItem)}
+                  {medicineItems.length === 0 ? (
+                    <div className="s-empty"><Pill size={36} /><p>Vuota</p></div>
+                  ) : shouldVirtualizeMedicine ? (
+                    <VirtualList
+                      items={medicineItems}
+                      itemHeight={SHOPPING_ITEM_HEIGHT}
+                      containerHeight={400}
+                      overscan={5}
+                      keyExtractor={(item) => item.id}
+                      renderItem={(item) => renderItem(item)}
+                    />
+                  ) : (
+                    medicineItems.map(renderItem)
+                  )}
                 </ul>
               </div>
             </div>
@@ -450,4 +539,16 @@ export function ShoppingListSection({
       )}
     </main>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison per React.memo
+  // Evita re-render se le props essenziali non sono cambiate
+  return (
+    prevProps.isMobile === nextProps.isMobile &&
+    prevProps.shoppingList.length === nextProps.shoppingList.length &&
+    prevProps.newItemText === nextProps.newItemText &&
+    prevProps.showSuggestions === nextProps.showSuggestions &&
+    prevProps.filteredSuggestions.length === nextProps.filteredSuggestions.length &&
+    prevProps.suggestions.length === nextProps.suggestions.length &&
+    prevProps.isActive === nextProps.isActive
+  );
+});
