@@ -29,7 +29,6 @@ npm run build:mobile # Build + sync per mobile
 - Env vars: copiare `.env.example` in `.env.local`
 - Firebase config: variabili `VITE_FIREBASE_*`
 - Push notification: `WEB_PUSH_VAPID_*` e `FIREBASE_SERVICE_ACCOUNT_JSON`
-- Self-signup: controllato da `VITE_ENABLE_SELF_SIGNUP`
 
 ## Convenzioni di Sviluppo
 - Usare TypeScript per tutto il codice nuovo

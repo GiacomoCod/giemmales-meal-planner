@@ -20,13 +20,6 @@ Per le funzioni push server-side servono anche:
 - `WEB_PUSH_SUBJECT`
 - `FIREBASE_SERVICE_ACCOUNT_JSON` per Netlify/functions quando non si usa `applicationDefault()`
 
-## Registrazione utenti
-
-La registrazione self-service è controllata da `VITE_ENABLE_SELF_SIGNUP`.
-
-- `false`: solo login, più sicuro per istanze private/familiari
-- `true`: abilita anche la creazione account dalla schermata di login
-
 ## Mobile config locali
 
 Questi file non vanno versionati:

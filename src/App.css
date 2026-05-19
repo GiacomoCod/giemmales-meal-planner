@@ -3138,16 +3138,36 @@ button.assignee-badge:hover {
   align-items: center;
   gap: 20px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease;
   box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
   border: 1px solid var(--border-color);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: opacity;
+}
+
+.room-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
 }
 
 .room-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
+  border-color: color-mix(in srgb, var(--accent-primary) 18%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-primary) 4%, var(--surface-color));
+}
+
+.room-card:hover::after {
+  opacity: 1;
 }
 
 .room-icon-wrapper {
@@ -3159,6 +3179,7 @@ button.assignee-badge:hover {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
+  transition: background-color 200ms ease, color 200ms ease;
 }
 
 .room-card:hover .room-icon-wrapper {
@@ -3185,7 +3206,7 @@ button.assignee-badge:hover {
 
 .room-arrow {
   color: var(--text-soft);
-  transition: transform 0.2s;
+  transition: transform 200ms ease, color 200ms ease;
 }
 
 .room-card:hover .room-arrow {

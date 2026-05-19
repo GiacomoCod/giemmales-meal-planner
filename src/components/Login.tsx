@@ -4,8 +4,6 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, type AuthEr
 import { auth } from '../firebase';
 import './Login.css';
 
-const selfSignupEnabled = import.meta.env.VITE_ENABLE_SELF_SIGNUP === 'true';
-
 const getAuthErrorMessage = (code?: string) => {
   switch (code) {
     case 'auth/invalid-credential':
@@ -48,7 +46,9 @@ export function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) {
+    const trimmedUsername = username.trim();
+
+    if (!trimmedUsername || !password) {
       setError('Inserisci sia nome utente che password.');
       return;
     }
@@ -56,16 +56,12 @@ export function Login() {
     setLoading(true);
     setError(null);
 
-    const fakeEmail = `${username.toLowerCase().trim()}@homeplanner.local`;
+    const fakeEmail = `${trimmedUsername.toLowerCase()}@homeplanner.local`;
 
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, fakeEmail, password);
       } else {
-        if (!selfSignupEnabled) {
-          setError('La registrazione pubblica è disattivata per questa istanza.');
-          return;
-        }
         await createUserWithEmailAndPassword(auth, fakeEmail, password);
       }
     } catch (err) {
@@ -141,24 +137,20 @@ export function Login() {
         </form>
 
         <div className="login-footer">
-          {selfSignupEnabled ? (
-            <>
-              <p>
-                {isLogin ? "Non hai ancora un'abitazione?" : "Hai già un'abitazione?"}
-              </p>
-              <button
-                className="toggle-mode-btn"
-                onClick={() => {
-                  setIsLogin(!isLogin);
-                  setError(null);
-                }}
-              >
-                {isLogin ? 'Crea un nuovo account' : 'Accedi qui'}
-              </button>
-            </>
-          ) : (
-            <p>Registrazione gestita manualmente per questa istanza.</p>
-          )}
+          <p>
+            {isLogin ? "Non hai ancora un'abitazione?" : "Hai già un'abitazione?"}
+          </p>
+          <button
+            type="button"
+            className="toggle-mode-btn"
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError(null);
+            }}
+            disabled={loading}
+          >
+            {isLogin ? 'Crea un nuovo account' : 'Accedi qui'}
+          </button>
         </div>
       </div>
     </div>
